@@ -92,3 +92,31 @@ One line per non-obvious choice, with the reason.
 - Per-page summary counters are deltas against the cache's lifetime counters. Found by running
   the pipeline twice: the second page reported "20 hit / 20 miss" with the misses carried over
   from the first.
+
+## Phase 4
+
+- The `fake` preset is `flagOnly`: it badges a review but takes no part in ranking or in the
+  hide-below-threshold decision. It is a warning about a review, not a reason the review answers
+  what the user searched for. Without this, an incentivised review outranked the battery
+  complaints someone typed a filter to find.
+- Verdict keys are namespaced `custom:<id>` and `preset:<id>`, so a user filter can never collide
+  with a preset id. Custom filter ids are generated with a `u_` prefix for the same reason.
+- The panel lives in a Shadow root with `all: initial`. Amazon's stylesheet is enormous and would
+  otherwise restyle everything we add, and our styles would leak back onto their page.
+- Badges are styled inline instead. An inline style beats Amazon's selectors without an
+  `!important` arms race, and a shadow root per card would be far heavier across 300 reviews.
+  They are inserted directly after the star rating rather than appended to its parent, which on
+  some cards would drop them at the end of the whole review.
+- Reordering moves existing nodes with `append`, never clones. Amazon's own listeners, lazy
+  images and "read more" expanders keep working because the nodes are never recreated.
+- Threshold and hide-below are display-only and never re-score: the cached answers are unchanged,
+  only their presentation is. This is the point of keeping combine.ts separate from the client.
+- The MutationObserver is disconnected around every DOM write Sift makes. Without this, painting
+  badges woke the observer, which repainted, forever: the e2e run measured 196 mutations in 3
+  seconds on an idle page. It is now 0, and the e2e asserts that.
+- A mutation pass that finds no new and no replaced cards returns without rendering, as a second
+  line of defence against the same loop.
+- Content script matches are host-level, because an Amazon product URL carries a slug before
+  `/dp/`, which a match pattern cannot express. `detectPage()` is the real gate.
+- `scripts/e2e-panel.ts` serves the fixture at a genuine amazon.in URL so the manifest's match
+  patterns and detectPage() are exercised for real, rather than bypassed with a localhost page.

@@ -257,3 +257,68 @@ describe("passesThreshold", () => {
     expect(passesThreshold(verdictsFor({}, active), 0.7)).toBe(true);
   });
 });
+
+describe("the fake preset flags, it does not rank", () => {
+  const active = { custom: [{ id: "f1" }], presets: ["fake"] };
+
+  /** A review that is plainly incentivised but does not match the user's filter. */
+  const incentivised = {
+    [customKey("f1")]: noulAnswer(0.06),
+    [presetSignalKey("fake", "generic_praise")]: noulAnswer(0.9),
+    [presetSignalKey("fake", "free_or_discounted")]: noulAnswer(0.96),
+    [presetSignalKey("fake", "tone_mismatch")]: noulAnswer(0.3),
+  };
+  /** A review that matches the user's filter and is not incentivised. */
+  const genuineMatch = {
+    [customKey("f1")]: noulAnswer(0.93),
+    [presetSignalKey("fake", "generic_praise")]: noulAnswer(0.1),
+    [presetSignalKey("fake", "free_or_discounted")]: noulAnswer(0.02),
+    [presetSignalKey("fake", "tone_mismatch")]: noulAnswer(0.1),
+  };
+
+  it("still produces a fake verdict to show as a badge", () => {
+    const verdicts = verdictsFor(incentivised, active);
+    expect(verdicts.byFilter["preset:fake"]).toMatchObject({ kind: "scored" });
+    expect((verdicts.byFilter["preset:fake"] as { probability: number }).probability).toBeCloseTo(0.96, 5);
+  });
+
+  it("does not let a high fake score become match strength", () => {
+    // The custom filter answered 0.06, and that is the only ranking signal.
+    expect(matchStrength(verdictsFor(incentivised, active))).toBeCloseTo(0.06, 5);
+  });
+
+  it("ranks the real filter match above the incentivised review", () => {
+    const sorted = sortByMatch([
+      { id: "incentivised", verdicts: verdictsFor(incentivised, active) },
+      { id: "genuine", verdicts: verdictsFor(genuineMatch, active) },
+    ]);
+    expect(sorted.map((r) => r.id)).toEqual(["genuine", "incentivised"]);
+  });
+
+  it("does not hide a review just because the flag is the only thing above threshold", () => {
+    // Custom filter is 0.06, well below 0.7; the flag must not rescue it.
+    expect(passesThreshold(verdictsFor(incentivised, active), 0.7)).toBe(false);
+  });
+
+  it("hides nothing when a flag is the only active filter", () => {
+    const flagOnly = { custom: [], presets: ["fake"] };
+    expect(passesThreshold(verdictsFor(incentivised, flagOnly), 0.7)).toBe(true);
+    expect(matchStrength(verdictsFor(incentivised, flagOnly))).toBeNull();
+  });
+
+  it("still ranks a non-flag preset normally", () => {
+    const active2 = { custom: [], presets: ["durability"] };
+    const answers = { [presetSignalKey("durability", "durability")]: noulAnswer(0.88) };
+    expect(matchStrength(verdictsFor(answers, active2))).toBeCloseTo(0.88, 5);
+  });
+
+  it("keys custom filters and presets apart, so ids cannot collide", () => {
+    // A custom filter literally named "fake" must not be treated as the flag.
+    const verdicts = verdictsFor(
+      { [customKey("fake")]: noulAnswer(0.91) },
+      { custom: [{ id: "fake" }], presets: [] },
+    );
+    expect(Object.keys(verdicts.byFilter)).toEqual(["custom:fake"]);
+    expect(matchStrength(verdicts)).toBeCloseTo(0.91, 5);
+  });
+});

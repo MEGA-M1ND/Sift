@@ -144,9 +144,24 @@ export function usefulnessOf(answers: AnswerMap): Usefulness | null {
   };
 }
 
+/** Verdict key for a preset, distinct from the `preset:<id>:<signal>` question keys. */
+export function presetVerdictKey(presetId: string): string {
+  return `preset:${presetId}`;
+}
+
+/** Preset verdict keys that annotate but never rank. */
+const FLAG_ONLY_KEYS = new Set(
+  PRESETS.filter((preset) => preset.flagOnly).map((preset) => presetVerdictKey(preset.id)),
+);
+
+/** Whether a verdict key only annotates a review rather than ranking it. */
+export function isFlagOnly(key: string): boolean {
+  return FLAG_ONLY_KEYS.has(key);
+}
+
 /** Every active filter's verdict for one review. */
 export interface ReviewVerdicts {
-  /** Keyed by filter id for custom filters, preset id for presets. */
+  /** Keyed by `custom:<id>` and `preset:<id>`, so the two can never collide. */
   byFilter: Record<string, Verdict>;
   usefulness: Usefulness | null;
 }
@@ -156,9 +171,11 @@ export function verdictsFor(
   active: { custom: Array<{ id: string }>; presets: string[] },
 ): ReviewVerdicts {
   const byFilter: Record<string, Verdict> = {};
-  for (const filter of active.custom) byFilter[filter.id] = customVerdict(answers, filter.id);
+  for (const filter of active.custom) byFilter[customKey(filter.id)] = customVerdict(answers, filter.id);
   for (const preset of PRESETS) {
-    if (active.presets.includes(preset.id)) byFilter[preset.id] = combinePreset(preset.id, answers).verdict;
+    if (active.presets.includes(preset.id)) {
+      byFilter[presetVerdictKey(preset.id)] = combinePreset(preset.id, answers).verdict;
+    }
   }
   return { byFilter, usefulness: usefulnessOf(answers) };
 }
@@ -173,7 +190,9 @@ export function verdictsFor(
  */
 export function matchStrength(verdicts: ReviewVerdicts): number | null {
   let best: number | null = null;
-  for (const verdict of Object.values(verdicts.byFilter)) {
+  for (const [key, verdict] of Object.entries(verdicts.byFilter)) {
+    // A flag annotates a review; it is not a reason the review matches.
+    if (isFlagOnly(key)) continue;
     if (verdict.kind === "unscored") continue;
     const value = verdict.kind === "unsure" ? verdict.probability * 0.5 : verdict.probability;
     if (best === null || value > best) best = value;
@@ -221,11 +240,15 @@ export function badgeStep(verdict: Verdict): BadgeStep | null {
 
 /** Whether a review passes the user's threshold on any active filter. */
 export function passesThreshold(verdicts: ReviewVerdicts, threshold: number): boolean {
-  for (const verdict of Object.values(verdicts.byFilter)) {
+  const ranking = Object.entries(verdicts.byFilter).filter(([key]) => !isFlagOnly(key));
+  // Nothing to filter on: flags alone never hide a review.
+  if (ranking.length === 0) return true;
+
+  for (const [, verdict] of ranking) {
     // An unsure answer is never confidently below the threshold, so it is not hidden.
     if (verdict.kind === "unsure") return true;
     if (verdict.kind === "scored" && verdict.probability >= threshold) return true;
   }
   // A review with no usable answers is never hidden: we do not know that it fails.
-  return Object.values(verdicts.byFilter).every((v) => v.kind === "unscored");
+  return ranking.every(([, v]) => v.kind === "unscored");
 }

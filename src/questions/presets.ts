@@ -41,6 +41,14 @@ export interface Preset {
    * combined score is floored at that signal's own probability.
    */
   decisive?: { signal: string; decisiveAbove: number };
+  /**
+   * A flag rather than a match. It annotates a review but takes no part in
+   * ranking or in the hide-below-threshold decision. "Reads like a fake review"
+   * is a warning about a review, not a reason it answers what the user searched
+   * for: with this off, an incentivised review would outrank the battery
+   * complaints someone actually typed a filter to find.
+   */
+  flagOnly?: boolean;
 }
 
 export const PRESETS: readonly Preset[] = [
@@ -125,6 +133,7 @@ export const PRESETS: readonly Preset[] = [
       },
     },
     weights: { generic_praise: 0.35, free_or_discounted: 0.45, tone_mismatch: 0.2 },
+    flagOnly: true,
     // An explicit disclosure is near-conclusive, and averaging it away would be wrong.
     decisive: { signal: "free_or_discounted", decisiveAbove: 0.8 },
   },

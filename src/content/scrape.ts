@@ -131,25 +131,37 @@ export function parseReviewCard(card: Element): Review | null {
   };
 }
 
+/** A parsed review together with the element it came from. */
+export interface ScrapedCard {
+  review: Review;
+  card: Element;
+}
+
 /**
- * All reviews currently in the DOM, in page order, deduplicated by id.
+ * All reviews currently in the DOM, in page order, deduplicated by id, each
+ * paired with its element so the UI can badge and reorder it later.
  * Searches within the known list containers first, then falls back to scanning
  * the whole document for review cards.
  */
-export function scrapeReviews(root: ParentNode): Review[] {
+export function scrapeReviewCards(root: ParentNode): ScrapedCard[] {
   const lists = queryAll(root, REVIEW_LIST);
   const cards =
     lists.length > 0 ? lists.flatMap((list) => queryAll(list, REVIEW_CARD)) : queryAll(root, REVIEW_CARD);
 
   const seen = new Set<string>();
-  const reviews: Review[] = [];
+  const scraped: ScrapedCard[] = [];
   for (const card of cards) {
     const review = parseReviewCard(card);
     if (!review || seen.has(review.id)) continue;
     seen.add(review.id);
-    reviews.push(review);
+    scraped.push({ review, card });
   }
-  return reviews;
+  return scraped;
+}
+
+/** All reviews currently in the DOM, in page order, deduplicated by id. */
+export function scrapeReviews(root: ParentNode): Review[] {
+  return scrapeReviewCards(root).map((item) => item.review);
 }
 
 /** Product title and narrowest breadcrumb category. */

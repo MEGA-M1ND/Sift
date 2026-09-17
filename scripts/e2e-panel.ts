@@ -1,0 +1,213 @@
+/**
+ * End-to-end check of the built extension, with no network.
+ *
+ *   npm run build && npm run e2e
+ *
+ * Loads dist/ into Chromium, serves a fixture as a real amazon.in URL so the
+ * manifest's match patterns and detectPage() are genuinely exercised, and
+ * intercepts api.typesafe.ai with a local stub. Proves the panel mounts, scores,
+ * badges, dims and reorders. The probabilities come from the stub, not Jev.
+ */
+import { readFileSync } from "node:fs";
+import { chromium, type BrowserContext } from "playwright";
+
+const DIST = new URL("../dist", import.meta.url).pathname;
+const FIXTURE = readFileSync(new URL("../fixtures/amazon-in-product-reviews.html", import.meta.url), "utf8");
+const PRODUCT_URL = "https://www.amazon.in/AcmeDrive-Drill/dp/B0BDHWDR12/ref=sr_1_3";
+
+/** Keyword stub standing in for the model, so the run is deterministic. */
+function stubAnswers(body: string): unknown {
+  const { state, questions, model } = JSON.parse(body) as {
+    state: { review: { title: string; body: string } };
+    questions: Record<string, { type: string; criteria?: unknown }>;
+    model?: string;
+  };
+  const text = `${state.review.title} ${state.review.body}`.toLowerCase();
+  const has = (...words: string[]) => words.some((word) => text.includes(word));
+
+  const answers: Record<string, unknown> = {};
+  for (const [name, question] of Object.entries(questions)) {
+    if (question.type === "noul") {
+      let p = 0.05;
+      if (name.startsWith("custom:")) p = has("battery", "charge") ? 0.93 : 0.06;
+      else if (name.includes("generic_praise")) p = text.length < 120 ? 0.82 : 0.1;
+      else if (name.includes("free_or_discounted")) p = has("discounted price", "exchange for") ? 0.96 : 0.03;
+      else if (name.includes("tone_mismatch")) p = 0.5;
+      answers[name] = { type: "noul", noul: p };
+    } else {
+      const level = has("month ten", "carpentry", "eighteen months") ? 1.9 : 0.6;
+      answers[name] = {
+        type: "score",
+        score: level,
+        confidence: 0.86,
+        legend: {},
+        probabilities: { 0: 0.1, 1: 0.2, 2: 0.7 },
+      };
+    }
+  }
+  return { model: model ?? "stub", answers, usage: { input_tokens: 420, output_tokens: 0 } };
+}
+
+async function extensionId(context: BrowserContext): Promise<string> {
+  for (let i = 0; i < 50; i += 1) {
+    const worker = context.serviceWorkers()[0];
+    if (worker) return new URL(worker.url()).host;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  throw new Error("the extension's service worker never started");
+}
+
+async function main(): Promise<void> {
+  // Extensions need full Chromium, not the headless shell. This environment
+  // pins a prebuilt one; CI installs its own and leaves CHROMIUM_PATH unset.
+  const executablePath = process.env.CHROMIUM_PATH;
+
+  const context = await chromium.launchPersistentContext("", {
+    headless: false,
+    ...(executablePath ? { executablePath } : {}),
+    args: [
+      "--headless=new",
+      `--disable-extensions-except=${DIST}`,
+      `--load-extension=${DIST}`,
+      "--no-sandbox",
+    ],
+  });
+
+  const failures: string[] = [];
+  const check = (label: string, ok: boolean) => {
+    console.log(`  ${ok ? "PASS" : "FAIL"}  ${label}`);
+    if (!ok) failures.push(label);
+  };
+
+  try {
+    // Serve the fixture as a genuine amazon.in URL, so the manifest's match
+    // patterns and detectPage() both do their real work.
+    await context.route("https://www.amazon.in/**", (route) =>
+      route.fulfill({ status: 200, contentType: "text/html", body: FIXTURE }),
+    );
+    // Stand in for the API. The service worker's fetch is routed too.
+    await context.route("https://api.typesafe.ai/**", async (route) => {
+      const body = route.request().postData() ?? "{}";
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(stubAnswers(body)),
+      });
+    });
+
+    const id = await extensionId(context);
+    console.log(`\nextension id: ${id}\n`);
+
+    // Enter the API key through the real settings page.
+    const options = await context.newPage();
+    await options.goto(`chrome-extension://${id}/src/options/index.html`);
+    await options.fill("#key", "test-key-not-a-real-one");
+    await options.click("#save");
+    await options.waitForFunction(() => document.querySelector("#status")?.textContent === "Saved.");
+    check("settings page stores the API key", true);
+    await options.close();
+
+    const page = await context.newPage();
+    page.on("console", (message) => {
+      if (message.text().includes("[Sift]")) console.log(`  page: ${message.text()}`);
+    });
+    await page.goto(PRODUCT_URL, { waitUntil: "domcontentloaded" });
+
+    const panel = page.locator("#sift-panel-host");
+    await panel.waitFor({ state: "attached", timeout: 15_000 });
+    check("panel mounts on a /dp/ page", true);
+
+    // The panel lives in a shadow root; Playwright pierces it automatically.
+    check(
+      "panel sits above the reviews list",
+      await page.evaluate(() => {
+        const host = document.querySelector("#sift-panel-host");
+        const list = document.querySelector("#cm_cr-review_list");
+        return !!host && !!list && !!(host.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING);
+      }),
+    );
+
+    check("no badges before a filter is added", (await page.locator("[data-sift-badge]").count()) === 0);
+
+    // Type a filter and score.
+    await panel.locator("input[type=text]").fill("battery dies within a year");
+    await panel.locator("button.add").click();
+
+    await page.waitForFunction(
+      () => document.querySelectorAll("[data-sift-badge]").length > 0,
+      undefined,
+      { timeout: 20_000 },
+    );
+    check("badges appear after scoring", true);
+
+    const badgeTexts = await page.locator("[data-sift-badge]:not([data-sift-badge=container])").allTextContents();
+    console.log(`  badges: ${JSON.stringify(badgeTexts)}`);
+    check("a high-confidence match is shown as a percentage", badgeTexts.some((t) => /9\d%/.test(t)));
+
+    // The battery review should now be first in the list.
+    const firstTitle = await page.evaluate(() => {
+      const first = document.querySelector('#cm_cr-review_list [data-hook="review"]');
+      return first?.querySelector('[data-hook="review-title"]')?.textContent?.trim() ?? "";
+    });
+    console.log(`  first review after sort: ${JSON.stringify(firstTitle)}`);
+    check("the battery review is reordered to the top", firstTitle.includes("Battery was dead"));
+
+    // Turn on the flag preset and confirm it does not steal the top spot.
+    await panel.locator(".chips.presets button", { hasText: "incentivised" }).click();
+    await page.waitForTimeout(2500);
+    const firstAfterFlag = await page.evaluate(() => {
+      const first = document.querySelector('#cm_cr-review_list [data-hook="review"]');
+      return first?.querySelector('[data-hook="review-title"]')?.textContent?.trim() ?? "";
+    });
+    console.log(`  first review with the flag chip on: ${JSON.stringify(firstAfterFlag)}`);
+    check("the fake-review flag does not outrank the real match", firstAfterFlag.includes("Battery was dead"));
+    check(
+      "flagged review carries a warning badge",
+      (await page.locator("[data-sift-badge='preset:fake']").allTextContents()).some((t) => t.includes("⚠")),
+    );
+
+    // Dim below threshold.
+    await panel.locator("input.hide").check();
+    await page.waitForTimeout(600);
+    const dimmed = await page.locator("[data-sift-dimmed='1']").count();
+    console.log(`  dimmed cards: ${dimmed}`);
+    check("hide-below-threshold dims rather than deletes", dimmed > 0);
+    check(
+      "dimmed reviews are still in the DOM",
+      (await page.locator('#cm_cr-review_list [data-hook="review"]').count()) === 6,
+    );
+
+    // Sift's own badge writes are DOM mutations; if the MutationObserver reacts
+    // to them the page renders forever. Count mutations once everything settled.
+    await page.waitForTimeout(1500);
+    const churn = await page.evaluate(async () => {
+      let count = 0;
+      const observer = new MutationObserver((records) => { count += records.length; });
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      observer.disconnect();
+      return count;
+    });
+    console.log(`  DOM mutations in 3s once idle: ${churn}`);
+    check("the page settles instead of re-rendering forever", churn < 20);
+
+    const status = await panel.locator(".status").textContent();
+    console.log(`  status line: ${JSON.stringify(status?.trim())}`);
+    check("status line reports scored count and cost", /reviews scored/.test(status ?? ""));
+
+    await page.screenshot({ path: "docs/panel.png", fullPage: true });
+    console.log("\n  screenshot: docs/panel.png");
+  } finally {
+    await context.close();
+  }
+
+  console.log("");
+  if (failures.length > 0) {
+    console.error(`${failures.length} check(s) failed:\n  - ${failures.join("\n  - ")}`);
+    process.exitCode = 1;
+  } else {
+    console.log("all checks passed");
+  }
+}
+
+await main();
