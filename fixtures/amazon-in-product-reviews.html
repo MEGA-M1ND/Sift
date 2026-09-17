@@ -1,0 +1,93 @@
+<!doctype html>
+<!--
+  SYNTHETIC FIXTURE - not a saved Amazon page. See fixtures/README.md.
+  Models a /product-reviews/ list page on amazon.in (day-month-year dates).
+-->
+<html lang="en-in">
+  <head><title>Customer reviews: AcmeDrive 20V Cordless Drill</title></head>
+  <body>
+    <div id="cm_cr-product_info">
+      <span id="productTitle">AcmeDrive 20V Cordless Drill with 2 Li-ion Batteries</span>
+    </div>
+
+    <div id="cm_cr-review_list">
+      <!-- Ordinary card: every field present. -->
+      <div data-hook="review" id="R1A2B3C4D5E6F7" class="a-section review aok-relative">
+        <a data-hook="review-title" class="review-title" href="/gp/customer-reviews/R1A2B3C4D5E6F7">
+          <i class="a-icon a-icon-star a-star-2"><span class="a-icon-alt">2.0 out of 5 stars</span></i>
+          <span class="a-letter-space"></span>
+          <span>Battery was dead within ten months</span>
+        </a>
+        <i data-hook="review-star-rating" class="a-icon a-icon-star a-star-2 review-rating">
+          <span class="a-icon-alt">2.0 out of 5 stars</span>
+        </i>
+        <span data-hook="review-date" class="a-size-base a-color-secondary review-date">
+          Reviewed in India on 4 March 2026
+        </span>
+        <span data-hook="avp-badge" class="a-size-mini a-color-state">Verified Purchase</span>
+        <div class="a-row a-spacing-small review-data">
+          <span data-hook="review-body" class="a-size-base review-text">
+            <div class="a-expander-content"><span>
+              Used it for weekend jobs, nothing heavy. Around month ten the battery went from a full
+              day of work to about forty minutes. The second battery went the same way a month later.
+            </span></div>
+          </span>
+        </div>
+        <span data-hook="helpful-vote-statement" class="a-size-base a-color-tertiary">
+          17 people found this helpful
+        </span>
+      </div>
+
+      <!-- No rating element at all, and a singular helpful-vote statement. -->
+      <div data-hook="review" id="R7Z8Y9X0W1V2U3" class="a-section review aok-relative">
+        <a data-hook="review-title" class="review-title">
+          <span>Does the job</span>
+        </a>
+        <span data-hook="review-date" class="review-date">Reviewed in India on 19 May 2026</span>
+        <span data-hook="review-body" class="review-text"><span>
+          Fine for light DIY. Nothing special, nothing wrong with it either.
+        </span></span>
+        <span data-hook="helpful-vote-statement">One person found this helpful</span>
+      </div>
+
+      <!-- Comma-grouped vote count, unverified purchase, no helpful statement text. -->
+      <div data-hook="review" id="R4Q5R6S7T8U9V0" class="a-section review">
+        <a data-hook="review-title"><span>Received it free, still honest</span></a>
+        <i data-hook="review-star-rating" class="a-icon a-star-5">
+          <span class="a-icon-alt">5.0 out of 5 stars</span>
+        </i>
+        <span data-hook="review-date">Reviewed in India on 2 June 2026</span>
+        <span data-hook="review-body"><span>
+          I received this item at a discounted price in exchange for my honest and unbiased review.
+          The build quality is impressive and the finish is lovely.
+        </span></span>
+        <span data-hook="helpful-vote-statement">1,204 people found this helpful</span>
+      </div>
+
+      <!-- Duplicate of the first card's id: must be dropped by dedupe. -->
+      <div data-hook="review" id="R1A2B3C4D5E6F7" class="a-section review">
+        <a data-hook="review-title"><span>Battery was dead within ten months</span></a>
+        <span data-hook="review-body"><span>Duplicate render of the same review.</span></span>
+      </div>
+
+      <!-- No body at all: must be skipped, there is nothing to score. -->
+      <div data-hook="review" id="R0000000000000" class="a-section review">
+        <a data-hook="review-title"><span>Title with no body</span></a>
+        <i data-hook="review-star-rating"><span class="a-icon-alt">3.0 out of 5 stars</span></i>
+      </div>
+
+      <!-- Unrecognised date format: kept verbatim rather than dropped. -->
+      <div data-hook="review" id="RABCDEF1234567" class="a-section review">
+        <a data-hook="review-title"><span>Eighteen months of daily site use</span></a>
+        <i data-hook="review-star-rating" class="a-star-5"><span class="a-icon-alt">5.0 out of 5 stars</span></i>
+        <span data-hook="review-date">Reviewed recently</span>
+        <span data-hook="avp-badge">Verified Purchase</span>
+        <span data-hook="review-body"><span>
+          I run a small carpentry business and this has been my main driver since early last year.
+          Both batteries still take a full charge and I get through a morning on one.
+        </span></span>
+        <span data-hook="helpful-vote-statement">63 people found this helpful</span>
+      </div>
+    </div>
+  </body>
+</html>

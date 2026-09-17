@@ -1,3 +1,6 @@
+// @vitest-environment node
+// The API client runs in the MV3 service worker, which has no `window`. The SDK
+// refuses to construct in a page context, so these tests must not run in a DOM.
 import { describe, expect, it } from "vitest";
 import { noul } from "@typesafe-ai/sdk";
 import { DEFAULT_CONCURRENCY, SiftClient } from "../src/background/client.js";
