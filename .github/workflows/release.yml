@@ -1,0 +1,128 @@
+name: Release
+
+# Tag a release with: git tag v0.1.0 && git push origin v0.1.0
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (for a manual run)"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: build and attach the store zip
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Never ship a build that does not pass its own checks.
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      - name: Check the manifest version matches the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          manifest="$(node -p "require('./dist/manifest.json').version")"
+          if [ "$tag" != "$manifest" ]; then
+            echo "::error::tag $tag does not match manifest version $manifest"
+            exit 1
+          fi
+          echo "version $manifest matches the tag"
+
+      - name: Zip for the Chrome Web Store
+        run: |
+          cd dist
+          zip -r "../sift-${GITHUB_REF_NAME:-dev}.zip" .
+          cd ..
+          ls -la sift-*.zip
+
+      - name: Attach the zip to the GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sift-*.zip
+          generate_release_notes: true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sift-store-zip
+          path: sift-*.zip
+          retention-days: 90
+
+  publish:
+    name: upload to the Chrome Web Store
+    needs: package
+    runs-on: ubuntu-latest
+    # Only runs once the four store credentials exist as repository secrets.
+    # Until then this job is skipped and the release stops at the attached zip.
+    #
+    # NOT YET EXERCISED: no store listing exists for Sift, so this path has
+    # never run. Treat the first run as something to watch, not to trust.
+    #
+    # To enable, add these repository secrets (Settings -> Secrets -> Actions):
+    #   CWS_EXTENSION_ID      the id from the Web Store developer dashboard
+    #   CWS_CLIENT_ID         OAuth client id for the Chrome Web Store API
+    #   CWS_CLIENT_SECRET     OAuth client secret
+    #   CWS_REFRESH_TOKEN     OAuth refresh token for the publishing account
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Check whether store credentials are configured
+        id: creds
+        env:
+          EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+        run: |
+          if [ -n "$EXTENSION_ID" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Chrome Web Store secrets are not set; skipping publish."
+          fi
+
+      - uses: actions/download-artifact@v4
+        if: steps.creds.outputs.configured == 'true'
+        with:
+          name: sift-store-zip
+
+      - name: Upload and publish
+        if: steps.creds.outputs.configured == 'true'
+        env:
+          EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        run: |
+          set -euo pipefail
+          zip_file="$(ls sift-*.zip | head -1)"
+
+          token="$(curl -sS -X POST https://oauth2.googleapis.com/token \
+            -d "client_id=$CLIENT_ID" \
+            -d "client_secret=$CLIENT_SECRET" \
+            -d "refresh_token=$REFRESH_TOKEN" \
+            -d "grant_type=refresh_token" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).access_token")"
+
+          curl -sS -f -X PUT \
+            -H "Authorization: Bearer $token" \
+            -H "x-goog-api-version: 2" \
+            -T "$zip_file" \
+            "https://www.googleapis.com/upload/chromewebstore/v1.1/items/$EXTENSION_ID"
+
+          curl -sS -f -X POST \
+            -H "Authorization: Bearer $token" \
+            -H "x-goog-api-version: 2" \
+            -H "Content-Length: 0" \
+            "https://www.googleapis.com/chromewebstore/v1.1/items/$EXTENSION_ID/publish"

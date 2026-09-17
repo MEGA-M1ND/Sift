@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch makes an in-flight run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: typecheck, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build the extension
+        run: npm run build
+
+      # Proof the build is loadable, not just that it compiled.
+      - name: Check the manifest is valid JSON and MV3
+        run: |
+          node -e "
+            const m = require('./dist/manifest.json');
+            if (m.manifest_version !== 3) throw new Error('not MV3');
+            if (!m.background?.service_worker) throw new Error('no service worker');
+            if (!m.host_permissions?.includes('https://api.typesafe.ai/*')) {
+              throw new Error('missing api.typesafe.ai host permission');
+            }
+            console.log('manifest ok:', m.name, m.version);
+          "
+
+      - name: Upload the unpacked extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: sift-unpacked-${{ github.sha }}
+          path: dist/
+          retention-days: 14
+
+  e2e:
+    name: end-to-end in Chromium
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Extensions need full Chromium, not the headless shell.
+      - name: Install Chromium
+        run: npx playwright install chromium --with-deps
+
+      - run: npm run build
+
+      - name: Panel end-to-end
+        run: npm run e2e
+
+      # The screenshot is the quickest way to see what a change did to the UI.
+      - name: Upload the panel screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: panel-screenshot-${{ github.sha }}
+          path: docs/panel.png
+          retention-days: 14
+
+  secrets:
+    name: no credentials in the tree
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # The API key is the one thing that must never reach this repository.
+      - name: Scan tracked files and history for API keys
+        run: |
+          set -euo pipefail
+          if git grep -nIE 'apikey_[A-Za-z0-9]{16,}' -- . ; then
+            echo "::error::a TypeSafe API key is present in a tracked file"
+            exit 1
+          fi
+          if git log -p --all | grep -nE 'apikey_[A-Za-z0-9]{16,}' ; then
+            echo "::error::a TypeSafe API key is present in git history"
+            exit 1
+          fi
+          if git ls-files --error-unmatch .env 2>/dev/null ; then
+            echo "::error::.env is tracked; it must stay ignored"
+            exit 1
+          fi
+          echo "no credentials found"
