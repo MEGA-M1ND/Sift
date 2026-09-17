@@ -62,3 +62,33 @@ One line per non-obvious choice, with the reason.
 - Client tests are pinned to the `node` vitest environment. Under happy-dom the SDK sees a
   `window` and refuses to construct, which is the same guard that keeps the API key out of the
   page and confirms the client must live in the service worker.
+
+## Phase 3
+
+- Nouls carry no `confidence`, so the spec's "grey out below 0.5 confidence" cannot apply to
+  custom filters or presets as written. A noul near 0.5 does mean "yes and no are about equally
+  likely", which is what the grey badge was for, so a noul inside NOUL_UNSURE_BAND (0.40-0.60)
+  renders as "unsure". Scores and choices use their real `confidence` against MIN_CONFIDENCE.
+  One constant each, both in combine.ts. Awaiting your call; nothing else depends on the choice.
+- The fake-review preset is three separate nouls combined here, never one "is this fake?"
+  question. Weights live in presets.ts so they can be tuned without touching logic.
+- A weighted mean alone was wrong for the free-product signal: 0.95 on an explicit disclosure
+  combined to 0.43, i.e. "unsure", for a review that openly says it was given the product free.
+  A signal marked `decisive` now floors the combined score at its own probability once past its
+  threshold. Weighted mean for compensating signals, a floor for one that stands alone. This is
+  the skill's "any serious violation needs separate conditions" point, applied to one signal.
+- A missing signal renormalises over the weights actually present, so one dropped answer
+  degrades a preset's score rather than voiding it.
+- Unsure verdicts are damped to half their probability for sorting, so they cannot outrank a
+  confident match, but they are never hidden by the threshold: we do not know that they fail.
+  Reviews with no usable answer sort last and are never hidden either.
+- The cache is subtracted before the request is built, so a request asks only genuinely unknown
+  questions and a fully cached review makes no request at all. Cache keys include the question's
+  canonical text, so editing a preset's wording correctly invalidates its cached answers.
+- Cache reads touch the LRU index in memory only. Persisting a timestamp on every read would
+  double write volume for something the user cannot see; a slightly stale LRU after a service
+  worker restart is the better trade.
+- Eviction runs in batches of 250 past the cap, so it is rare rather than once per write.
+- Per-page summary counters are deltas against the cache's lifetime counters. Found by running
+  the pipeline twice: the second page reported "20 hit / 20 miss" with the misses carried over
+  from the first.
