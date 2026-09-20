@@ -147,7 +147,7 @@ in [PRIVACY.md](PRIVACY.md).
 
 Being straight about this, because a passing test suite can look like more than it is.
 
-**Verified.** 190 unit tests and an end-to-end run that loads the built extension
+**Verified.** 206 unit tests and an end-to-end run that loads the built extension
 into Chromium, serves a saved page at a real `amazon.in` URL so the manifest's match
 patterns and page detection do their actual work, and checks that the panel mounts,
 scores, badges, dims, reorders and then stops re-rendering. The retry and backoff
@@ -188,10 +188,49 @@ that has not been tested against Amazon either.
 
 [docs/RISKS.md](docs/RISKS.md) ranks what is most likely to break first.
 
+## When it stops working
+
+Amazon changes its review markup often, so assume this will happen eventually.
+
+Sift checks its own selectors on every page load and complains in the console
+when they no longer fit. Open DevTools and look for a line starting `[Sift]`:
+
+```
+[Sift] Sift selector health: PROBLEMS FOUND
+  ! 12 review cards were found, but none could be parsed. The body selector is
+    the likeliest cause, since a card with no body text is dropped.
+
+  list container   #cm_cr-review_list
+  review card      [data-hook="review"]
+  cards found      12
+  reviews parsed   0 (12 dropped)
+  ...
+  body            0/12  MISS  <-- probably broken
+```
+
+It also catches the quieter failure: a field that broke without emptying the
+page, such as ratings silently vanishing while everything else still works.
+
+For the same report on demand, switch the console's context dropdown from `top`
+to the Sift content script and run:
+
+```js
+__sift.report()   // selector health, as text
+__sift.diagnose() // the same thing, structured
+__sift.state()    // what Sift currently thinks about this page
+```
+
+Those live in the content script's isolated world, so nothing on the page can
+see or call them.
+
+To fix: save the page (Ctrl+S, or copy `document.documentElement.outerHTML`),
+run `npm run check-fixture -- <file.html>`, and correct whatever it reports in
+`src/content/selectors.ts`. That file is the entire blast radius.
+
 ## Development
 
 ```sh
-npm test              # 190 unit tests, no network
+npm test              # 206 unit tests, no network
 npm run typecheck
 npm run build         # produces dist/
 npm run e2e           # loads dist/ into Chromium and drives the panel

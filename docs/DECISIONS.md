@@ -176,3 +176,17 @@ One line per non-obvious choice, with the reason.
   forever without ever scoring a review. Continue must always buy progress.
 - formatCostUsd renders anything below $0.0001 as "<$0.0001" rather than "$0.0000". The ceiling
   message surfaced it: a real limit was being displayed as free.
+- `diagnose()` runs on every page load and warns in the console when the selectors no longer fit.
+  A user reporting "it does nothing" otherwise has no way to tell us which selector broke.
+- The same diagnose() backs `npm run check-fixture`, so what the script prints and what a user
+  sees in their console cannot drift apart.
+- Only title, body, rating and date are coverage-checked. `verified` and `helpful` are legitimately
+  absent from many genuine reviews, and a warning that fires on healthy pages trains people to
+  ignore the one that matters.
+- Cards-found-but-none-parsed logs at error level; nothing-found-at-all logs at warning level,
+  because a product with no reviews yet is a real page, not a bug.
+- `__sift.report()` / `.diagnose()` / `.state()` are attached to the content script's isolated
+  world. The page cannot see them, and DevTools reaches them through its context picker.
+- The e2e checks the health warning on deliberately broken markup served at a real amazon.in URL,
+  and reaches `__sift` over CDP, because page.evaluate() runs in the main world and cannot see the
+  isolated one. It also asserts a healthy page stays silent.

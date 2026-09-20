@@ -8,6 +8,10 @@ not a generic checklist.
 
 ## 1. The selectors do not match live Amazon
 
+**Status: partly addressed.** Sift now detects its own breakage and says so.
+The underlying risk is unchanged, because detection is not verification: the
+selectors still have never met a live Amazon page.
+
 **Likelihood: high. Impact: total.**
 
 Every selector in `src/content/selectors.ts` is either `[corroborated]` (seen in a
@@ -29,10 +33,33 @@ which reads as "this extension is broken" rather than "this page is unusual".
    twenty minutes of work and it retires the single largest risk here.
 2. Replace the synthetic fixtures with those real pages so the tests start meaning
    something.
-3. Add a console warning when `detectPage()` matched but `scrapeReviewCards()`
-   returned nothing — that combination is always a selector failure, never a normal
-   page, and it is the signal you want in a bug report.
-4. Longer term: widen each candidate list rather than replacing entries, so one
+3. ~~Add a console warning when the page matched but nothing was found~~ — done,
+   and wider than originally planned. `diagnose()` checks every selector on every
+   page load and reports:
+
+   - nothing found at all (warning, since the product may genuinely have no
+     reviews yet)
+   - cards found but none parsed (error, and it names the body selector as the
+     likeliest cause)
+   - an expected field missing from more than half the cards (error)
+
+   That third case is the one worth having. It catches a selector that broke
+   *without* emptying the page — ratings silently gone while everything still
+   appears to work — which would otherwise never be reported by anyone.
+
+   `verified` and `helpful` are deliberately excluded from that check: plenty of
+   genuine reviews have neither, so judging them by coverage would cry wolf on a
+   healthy page. A warning that fires on working pages gets ignored, and then the
+   real one gets ignored too.
+
+   The same `diagnose()` powers `npm run check-fixture`, so the script and the
+   runtime cannot drift apart. `__sift.report()` and `__sift.state()` in the
+   console give the same output on demand, for pasting into a bug report.
+
+4. Still open, and still the only thing that actually retires this risk: run
+   `check-fixture` against a real saved page and fix what it reports. Detection
+   tells you when it breaks; only verification tells you whether it works.
+5. Longer term: widen each candidate list rather than replacing entries, so one
    markup variant does not break the other.
 
 ---

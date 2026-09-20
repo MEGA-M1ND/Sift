@@ -9,11 +9,18 @@
  * badges, dims and reorders. The probabilities come from the stub, not Jev.
  */
 import { readFileSync } from "node:fs";
-import { chromium, type BrowserContext } from "playwright";
+import { chromium, type BrowserContext, type Page } from "playwright";
 
 const DIST = new URL("../dist", import.meta.url).pathname;
 const FIXTURE = readFileSync(new URL("../fixtures/amazon-in-product-reviews.html", import.meta.url), "utf8");
 const PRODUCT_URL = "https://www.amazon.in/AcmeDrive-Drill/dp/B0BDHWDR12/ref=sr_1_3";
+/** Same URL shape, served markup the scraper cannot read. */
+const BROKEN_URL = "https://www.amazon.in/AcmeDrive-Drill/dp/B0BROKEN12/ref=sr_1_4";
+const BROKEN_PAGE = `<html><body><span id="productTitle">A product</span>
+  <div id="cm_cr-review_list">
+    <div data-hook="review" id="RB1"><a data-hook="review-title"><span>Nice</span></a></div>
+    <div data-hook="review" id="RB2"><a data-hook="review-title"><span>Bad</span></a></div>
+  </div></body></html>`;
 
 /** Keyword stub standing in for the model, so the run is deterministic. */
 function stubAnswers(body: string): unknown {
@@ -46,6 +53,42 @@ function stubAnswers(body: string): unknown {
     }
   }
   return { model: model ?? "stub", answers, usage: { input_tokens: 420, output_tokens: 0 } };
+}
+
+/**
+ * Evaluate an expression inside the content script's isolated world.
+ *
+ * Content scripts get their own execution context, invisible to
+ * `page.evaluate()`. DevTools reaches it through its context picker; this does
+ * the same over CDP, so the debug hook is tested where it actually lives.
+ */
+async function evaluateInContentScript<T>(page: Page, expression: string): Promise<T | null> {
+  const cdp = await page.context().newCDPSession(page);
+  const contexts: Array<{ id: number; name: string; isDefault: boolean }> = [];
+  cdp.on("Runtime.executionContextCreated", ({ context }) => {
+    contexts.push({
+      id: context.id,
+      name: String(context.name ?? ""),
+      isDefault: Boolean((context.auxData as { isDefault?: boolean } | undefined)?.isDefault),
+    });
+  });
+  await cdp.send("Runtime.enable");
+  await new Promise((resolve) => setTimeout(resolve, 500));
+
+  // The isolated world is the non-default context on this frame.
+  for (const context of contexts.filter((c) => !c.isDefault)) {
+    try {
+      const { result } = await cdp.send("Runtime.evaluate", {
+        expression,
+        contextId: context.id,
+        returnByValue: true,
+      });
+      if (result.value !== undefined && result.value !== null) return result.value as T;
+    } catch {
+      // Wrong context; try the next one.
+    }
+  }
+  return null;
 }
 
 async function extensionId(context: BrowserContext): Promise<string> {
@@ -82,9 +125,11 @@ async function main(): Promise<void> {
   try {
     // Serve the fixture as a genuine amazon.in URL, so the manifest's match
     // patterns and detectPage() both do their real work.
-    await context.route("https://www.amazon.in/**", (route) =>
-      route.fulfill({ status: 200, contentType: "text/html", body: FIXTURE }),
-    );
+    await context.route("https://www.amazon.in/**", (route) => {
+      // One ASIN serves markup with no review bodies, to exercise the health check.
+      const body = route.request().url().includes("B0BROKEN12") ? BROKEN_PAGE : FIXTURE;
+      return route.fulfill({ status: 200, contentType: "text/html", body });
+    });
     // Stand in for the API. The service worker's fetch is routed too.
     await context.route("https://api.typesafe.ai/**", async (route) => {
       const body = route.request().postData() ?? "{}";
@@ -322,6 +367,54 @@ async function main(): Promise<void> {
     });
     check("Continue grants another limit's worth and the run finishes", true);
     await page4.close();
+
+    // ---- selector health warning ----
+    const page5 = await context.newPage();
+    const consoleLines: string[] = [];
+    page5.on("console", (message) => {
+      if (message.text().includes("[Sift]")) consoleLines.push(`${message.type()}: ${message.text()}`);
+    });
+    await page5.goto(BROKEN_URL, { waitUntil: "domcontentloaded" });
+    await page5.waitForTimeout(2500);
+
+    const health = consoleLines.find((line) => line.includes("selector health"));
+    console.log(`  health warning: ${health ? health.split("\n")[0] : "(none)"}`);
+    check("a page the scraper cannot read produces a console warning", health !== undefined);
+    check("the warning is logged as an error when the breakage is definite", health?.startsWith("error:") === true);
+    check("the warning names the likely cause", (health ?? "").includes("body selector"));
+    check(
+      "the warning says where to fix it",
+      consoleLines.some((line) => line.includes("selectors.ts")),
+    );
+    check(
+      "the panel does not appear on a page with no readable reviews",
+      (await page5.locator("#sift-panel-host").count()) === 0,
+    );
+
+    // The on-demand hook lives in the content script's isolated world, which is
+    // exactly where DevTools' context picker points. page.evaluate() runs in the
+    // main world and cannot see it, so reach the isolated world over CDP the way
+    // DevTools does.
+    const onDemand = await evaluateInContentScript<{ report: string; state: unknown } | null>(
+      page5,
+      `(() => { const d = globalThis.__sift; return d ? { report: d.report(), state: d.state() } : null; })()`,
+    );
+    check("__sift.report() is available on demand", typeof onDemand?.report === "string");
+    check("__sift.report() reports the same problem", (onDemand?.report ?? "").includes("PROBLEMS FOUND"));
+    check("__sift.state() describes what Sift thinks", onDemand?.state !== undefined);
+    console.log(`  __sift.state(): ${JSON.stringify(onDemand?.state)}`);
+    await page5.close();
+
+    // A healthy page must stay quiet: a warning that always fires is ignored.
+    const page6 = await context.newPage();
+    const healthyLines: string[] = [];
+    page6.on("console", (message) => {
+      if (message.text().includes("selector health")) healthyLines.push(message.text());
+    });
+    await page6.goto(PRODUCT_URL, { waitUntil: "domcontentloaded" });
+    await page6.waitForTimeout(2000);
+    check("a healthy page logs no health warning at all", healthyLines.length === 0);
+    await page6.close();
 
     // NOTE: viewport ordering is unit-tested rather than checked here. The
     // fixture has four reviews, all on screen and all in one chunk, so the page

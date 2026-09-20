@@ -10,6 +10,7 @@
  */
 import { collectReviews, DEFAULT_REVIEW_CAP } from "./collect.js";
 import { decorateCard, reorderCards, setDimmed, undecorate } from "./decorate.js";
+import { diagnose, formatReport } from "./diagnose.js";
 import { detectPage, type PageTarget } from "./page.js";
 import { Panel, type PanelState } from "./panel.js";
 import { chunk, orderByViewport, sendWithRetry, withinBudget } from "./resume.js";
@@ -86,6 +87,11 @@ class Sift {
     this.#product = scrapeProduct(document);
     this.#ingest();
 
+    // Amazon changes its markup often, so check that the scraper still works
+    // and say so loudly if it does not. A user reporting "it does nothing" has
+    // no other way to tell us which selector broke.
+    this.#checkSelectorHealth();
+
     if (this.#reviews.size === 0) return;
 
     this.#panel = new Panel(
@@ -113,6 +119,49 @@ class Sift {
 
     // Fetch more reviews in the background; scoring waits for a filter anyway.
     void this.#collectMore();
+  }
+
+  /**
+   * Warn in the console when the page no longer looks like the scraper expects.
+   *
+   * Two cases, and they deserve different volumes. Cards present but nothing
+   * parsed, or a field missing from most cards, is a definite breakage and gets
+   * an error. Nothing found at all might just be a product with no reviews, so
+   * that gets a warning rather than an accusation.
+   */
+  #checkSelectorHealth(): void {
+    let report;
+    try {
+      report = diagnose(document);
+    } catch (error) {
+      // Diagnostics must never be the thing that breaks the page.
+      console.warn("[Sift] could not run the selector health check:", error);
+      return;
+    }
+
+    if (report.healthy) return;
+
+    const definite = report.cards > 0;
+    const log = definite ? console.error : console.warn;
+    log(
+      `[Sift] ${formatReport(report)}\n\n` +
+        "  Run __sift.report() in this console for the same output on demand.",
+    );
+  }
+
+  /** Everything a bug report needs, without asking anyone to read the source. */
+  debugState(): Record<string, unknown> {
+    return {
+      target: this.#target,
+      product: this.#product,
+      reviewsKnown: this.#reviews.size,
+      reviewsScored: this.#answers.size,
+      cardsTracked: this.#cards.size,
+      reviewCap: this.#reviewCap,
+      spentUsd: this.#spentUsd,
+      budgetUsd: this.#budgetUsd,
+      filters: this.#panel?.state ?? null,
+    };
   }
 
   /**
@@ -448,6 +497,22 @@ function main(): void {
   const target = detectPage(location.href);
   if (!target) return;
   const sift = new Sift(target);
+
+  // Reachable from DevTools by switching the console's context to the Sift
+  // content script. Content scripts run in an isolated world, so this is not
+  // visible to the page itself or to anything Amazon ships.
+  Object.defineProperty(globalThis, "__sift", {
+    value: {
+      /** The structured selector health report. */
+      diagnose: () => diagnose(document),
+      /** The same report as text, for pasting into a bug report. */
+      report: () => formatReport(diagnose(document)),
+      /** What Sift currently thinks about this page. */
+      state: () => sift.debugState(),
+    },
+    configurable: true,
+  });
+
   void sift.start().catch((error: unknown) => {
     // Never let a failure here change the page.
     console.warn("[Sift] disabled after an error:", error);
