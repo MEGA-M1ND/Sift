@@ -137,3 +137,6 @@ One line per non-obvious choice, with the reason.
   the e2e, rather than adding an image toolchain for four files.
 - README states plainly what has and has not been verified. A reader seeing "149 tests passing"
   would otherwise reasonably assume the selectors work against live Amazon, which is not known.
+- Pagination waits 600-1000ms with jitter between page fetches. Thirty back-to-back same-origin
+  requests is what scraping looks like, and a throttled or CAPTCHA'd account would be the user's
+  problem, caused by us. The delay is injectable so tests do not sit through it.

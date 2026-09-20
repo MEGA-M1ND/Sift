@@ -5,6 +5,9 @@ import type { Review } from "../src/shared/types.js";
 
 const TARGET: PageTarget = { site: "amazon.in", kind: "product", asin: "B0BDHWDR12" };
 
+/** Tests must not sit through the real pacing delay. */
+const noDelay = async () => {};
+
 function review(id: string): Review {
   return {
     id,
@@ -61,6 +64,7 @@ describe("collectReviews", () => {
         called += 1;
         return response(pageHtml([]));
       },
+      delay: noDelay,
     });
     expect(called).toBe(0);
     expect(result.stopped).toBe("no_pagination");
@@ -80,6 +84,7 @@ describe("collectReviews", () => {
         called += 1;
         return response(pageHtml([]));
       },
+      delay: noDelay,
     });
     expect(called).toBe(0);
     expect(result.stopped).toBe("cap");
@@ -94,6 +99,7 @@ describe("collectReviews", () => {
       canPaginate: true,
       cap: 25,
       fetchPage,
+      delay: noDelay,
     });
     expect(result.stopped).toBe("cap");
     expect(result.reviews).toHaveLength(25);
@@ -107,7 +113,7 @@ describe("collectReviews", () => {
 
   it("uses the default cap of 300", async () => {
     const { fetchPage } = endlessPages();
-    const result = await collectReviews({ target: TARGET, initial: [], canPaginate: true, fetchPage });
+    const result = await collectReviews({ target: TARGET, initial: [], canPaginate: true, fetchPage, delay: noDelay });
     expect(result.reviews).toHaveLength(300);
     expect(result.stopped).toBe("cap");
   });
@@ -120,6 +126,7 @@ describe("collectReviews", () => {
       canPaginate: true,
       cap: 100,
       fetchPage: async () => response(pageHtml(["R1", "R2"])),
+      delay: noDelay,
     });
     expect(result.stopped).toBe("exhausted");
     expect(result.reviews).toHaveLength(2);
@@ -140,6 +147,7 @@ describe("collectReviews", () => {
         if (page === 2) return response(pageHtml(["RC", "RD"]));
         return response(pageHtml(["RD"]));
       },
+      delay: noDelay,
     });
     expect(result.reviews.map((r) => r.id)).toEqual(["RA", "RB", "RC", "RD"]);
     expect(result.stopped).toBe("exhausted");
@@ -153,6 +161,7 @@ describe("collectReviews", () => {
         canPaginate: true,
         fetchPage: async () =>
           response("<html><body>Sign in</body></html>", {}, "https://www.amazon.in/ap/signin?openid.return_to=x"),
+        delay: noDelay,
       });
       expect(result.stopped).toBe("blocked");
       expect(result.detail).toBe("sign-in required");
@@ -166,6 +175,7 @@ describe("collectReviews", () => {
         canPaginate: true,
         fetchPage: async () =>
           response('<html><body><form name="signIn"><input id="ap_email"></form></body></html>'),
+        delay: noDelay,
       });
       expect(result.stopped).toBe("blocked");
       expect(result.reviews).toHaveLength(1);
@@ -177,6 +187,7 @@ describe("collectReviews", () => {
         initial: [review("R1")],
         canPaginate: true,
         fetchPage: async () => response("", { status: 429 }),
+        delay: noDelay,
       });
       expect(result.stopped).toBe("blocked");
       expect(result.detail).toBe("HTTP 429");
@@ -188,6 +199,7 @@ describe("collectReviews", () => {
         initial: [review("R1"), review("R2")],
         canPaginate: true,
         fetchPage: async () => response("", { status: 500 }),
+        delay: noDelay,
       });
       expect(result.stopped).toBe("error");
       expect(result.detail).toBe("HTTP 500");
@@ -202,6 +214,7 @@ describe("collectReviews", () => {
         fetchPage: async () => {
           throw new TypeError("Failed to fetch");
         },
+        delay: noDelay,
       });
       expect(result.stopped).toBe("error");
       expect(result.detail).toBe("Failed to fetch");
@@ -220,10 +233,48 @@ describe("collectReviews", () => {
           if (page <= 2) return response(pageHtml([`R${page}a`, `R${page}b`]));
           return response("", { status: 403 });
         },
+        delay: noDelay,
       });
       expect(result.stopped).toBe("blocked");
       expect(result.pagesFetched).toBe(2);
       expect(result.reviews).toHaveLength(4);
     });
+  });
+});
+
+describe("pacing", () => {
+  it("waits between pagination requests, so Amazon does not see a burst", async () => {
+    // Thirty back-to-back same-origin fetches is what gets an account throttled.
+    const waits: number[] = [];
+    let page = 0;
+    await collectReviews({
+      target: TARGET,
+      initial: [],
+      canPaginate: true,
+      cap: 25,
+      fetchPage: async () => {
+        page += 1;
+        return response(pageHtml(Array.from({ length: 10 }, (_, i) => `R-${page}-${i}`)));
+      },
+      delay: async () => {
+        waits.push(Date.now());
+      },
+    });
+    // One pause before each fetched page, including the first extra one.
+    expect(waits).toHaveLength(page);
+    expect(page).toBeGreaterThan(1);
+  });
+
+  it("does not pause when there is no pagination to do", async () => {
+    let paused = 0;
+    await collectReviews({
+      target: TARGET,
+      initial: [review("R1")],
+      canPaginate: false,
+      delay: async () => {
+        paused += 1;
+      },
+    });
+    expect(paused).toBe(0);
   });
 });

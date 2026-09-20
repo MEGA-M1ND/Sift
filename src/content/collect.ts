@@ -16,6 +16,22 @@ export const DEFAULT_REVIEW_CAP = 300;
 /** Amazon serves 10 reviews per page; a page yielding none means we are done. */
 const MAX_PAGES = 60;
 
+/**
+ * Pause between pagination requests.
+ *
+ * Thirty same-origin requests fired back to back is what scraping looks like,
+ * and the account being throttled or shown a CAPTCHA is the user's problem, not
+ * ours to cause. This is roughly a fast human clicking "next page", and the
+ * reviews already on screen are scored while this runs, so the wait is not felt.
+ */
+const PAGE_DELAY_MS = 600;
+const PAGE_DELAY_JITTER_MS = 400;
+
+function pageDelay(): Promise<void> {
+  const wait = PAGE_DELAY_MS + Math.random() * PAGE_DELAY_JITTER_MS;
+  return new Promise((resolve) => setTimeout(resolve, wait));
+}
+
 export type StopReason =
   /** Hit the configured review cap. */
   | "cap"
@@ -50,6 +66,8 @@ export interface CollectOptions {
   fetchPage?: (url: string) => Promise<Response>;
   /** Injected for tests; defaults to DOMParser. */
   parseHtml?: (html: string) => Document;
+  /** Injected so tests do not sit through the pacing delay. */
+  delay?: () => Promise<void>;
 }
 
 /** A sign-in redirect is how Amazon usually refuses anonymous pagination. */
@@ -71,6 +89,7 @@ export async function collectReviews(options: CollectOptions): Promise<CollectRe
   const cap = options.cap ?? DEFAULT_REVIEW_CAP;
   const fetchPage = options.fetchPage ?? ((url: string) => fetch(url, { credentials: "include" }));
   const parseHtml = options.parseHtml ?? defaultParseHtml;
+  const delay = options.delay ?? pageDelay;
 
   const seen = new Set<string>();
   const reviews: Review[] = [];
@@ -98,6 +117,9 @@ export async function collectReviews(options: CollectOptions): Promise<CollectRe
   // /product-reviews/ page the visible list is also page 1 unless the user
   // navigated, which is handled by dedupe rather than by guessing.
   for (let page = 2; page <= MAX_PAGES; page += 1) {
+    // Pace ourselves before every fetch, including the first extra page.
+    await delay();
+
     let response: Response;
     let html: string;
     try {

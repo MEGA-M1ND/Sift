@@ -122,7 +122,7 @@ in [PRIVACY.md](PRIVACY.md).
 
 Being straight about this, because a passing test suite can look like more than it is.
 
-**Verified.** 149 unit tests and an end-to-end run that loads the built extension
+**Verified.** 151 unit tests and an end-to-end run that loads the built extension
 into Chromium, serves a saved page at a real `amazon.in` URL so the manifest's match
 patterns and page detection do their actual work, and checks that the panel mounts,
 scores, badges, dims, reorders and then stops re-rendering. The retry and backoff
@@ -157,12 +157,16 @@ built in:
 
 Pagination past the first page is also untested against the live site. Amazon often
 redirects anonymous pagination to a sign-in page; Sift treats that as a normal
-outcome, keeps the reviews already on the page, and says so in the console.
+outcome, keeps the reviews already on the page, and says so in the console. Requests
+are paced about a second apart so a full collection does not look like scraping, but
+that has not been tested against Amazon either.
+
+[docs/RISKS.md](docs/RISKS.md) ranks what is most likely to break first.
 
 ## Development
 
 ```sh
-npm test              # 149 unit tests, no network
+npm test              # 151 unit tests, no network
 npm run typecheck
 npm run build         # produces dist/
 npm run e2e           # loads dist/ into Chromium and drives the panel
@@ -174,6 +178,7 @@ Put your key in a `.env` file (already gitignored) for `npm run smoke`. CI fails
 build if a key ever appears in a tracked file or anywhere in git history.
 
 `docs/DECISIONS.md` has one line per non-obvious choice, with the reason.
+`docs/RISKS.md` ranks the five things most likely to break first, with fixes.
 
 ### Layout
 
