@@ -19,44 +19,118 @@
  * one field instead of emptying the whole page.
  */
 
-/** Containers holding the list of review cards. */
+/**
+ * Containers holding the list of review cards.
+ *
+ * Tried in order, and a container is only accepted if it actually contains
+ * cards, so an empty or wrong match falls through to the next.
+ */
 export const REVIEW_LIST: readonly string[] = [
   // [corroborated] The review list on /product-reviews/ pages.
   "#cm_cr-review_list",
   // [unverified] The reviews block embedded in a /dp/ product page.
   "#cm-cr-dp-review-list",
+  // [speculative] Hyphen/underscore variants of the same two ids. Amazon is not
+  // consistent between them, and a one-character change should not cost a page.
+  "#cm-cr-review-list",
+  "#cm_cr-dp-review-list",
   // [unverified] Wrapper around the whole reviews section on /dp/.
   "#reviewsMedley",
+  // [speculative] Structural last resort before the document-wide scan: any
+  // element that directly holds review cards.
+  "div:has(> [data-hook=\"review\"])",
 ];
 
-/** A single review card within a list. */
+/**
+ * A single review card within a list.
+ *
+ * Widening here is cheap: `parseReviewCard` drops anything without body text,
+ * so a card selector that matches something else costs nothing but a cycle.
+ */
 export const REVIEW_CARD: readonly string[] = [
   // [unverified] The stable card marker; its `id` attribute carries the review id.
   '[data-hook="review"]',
+  // [speculative] Same marker on a list item rather than a div, and the
+  // "other countries" variant Amazon renders in a separate block.
+  '[data-hook="cr-non-verified-purchase-review"]',
+  '[data-hook="review-collapsed"]',
   // [unverified] Older card class, still emitted on some locales.
   "div.review",
+  // [speculative] Any element carrying a review body, walked up to its card.
+  '[id^="R"]:has([data-hook="review-body"])',
 ];
 
 /** Fields within one review card. */
 export const REVIEW_FIELD = {
   // [corroborated] amazon-buddy reads [data-hook="review-title"].
-  title: ['[data-hook="review-title"] span:not([class])', '[data-hook="review-title"]', "a.review-title", "span.review-title"],
+  //
+  // The first entry is precise but brittle: it breaks the moment Amazon adds a
+  // class to that span. The next two survive that, and the bare hook is last
+  // because its text includes the star rating ("2.0 out of 5 stars Title").
+  title: [
+    '[data-hook="review-title"] span:not([class])',
+    '[data-hook="review-title"] > span:last-of-type', // [speculative]
+    '[data-hook="review-title"] span:not(.a-icon-alt):not(.a-letter-space)', // [speculative]
+    '[data-hook="review-title-content"] span', // [speculative]
+    '[data-hook="review-title"]',
+    "a.review-title",
+    "span.review-title",
+  ],
   // [corroborated] amazon-buddy reads [data-hook="review-body"].
-  body: ['[data-hook="review-body"] span', '[data-hook="review-body"]', "span.review-text-content", "span.review-text"],
+  body: [
+    '[data-hook="review-body"] span',
+    '[data-hook="review-body"] .a-expander-content', // [speculative] collapsed long reviews
+    '[data-hook="review-body"]',
+    '[data-hook="review-collapsed"] span', // [speculative]
+    "span.review-text-content",
+    "span.review-text",
+    "div.reviewText", // [speculative] older markup
+  ],
   // [corroborated] amazon-buddy reads [data-hook="review-star-rating"].
-  rating: ['[data-hook="review-star-rating"]', '[data-hook="cmps-review-star-rating"]', "i.review-rating", "i[class*='a-star-']"],
+  //
+  // Each candidate is tried until one yields a parseable rating, so an entry
+  // that matches an element with neither readable text nor a star class is
+  // skipped rather than accepted as "no rating".
+  rating: [
+    '[data-hook="review-star-rating"]',
+    '[data-hook="cmps-review-star-rating"]',
+    '[data-hook="review-star-rating"] .a-icon-alt', // [speculative]
+    '[data-hook*="review-star-rating"]', // [speculative] covers future hook names
+    "i.review-rating",
+    "i[class*='a-star-']",
+    "span.a-icon-alt", // [speculative] last resort, text-only
+  ],
   // [corroborated] amazon-buddy reads [data-hook="review-date"].
-  date: ['[data-hook="review-date"]'],
+  date: [
+    '[data-hook="review-date"]',
+    '[data-hook*="review-date"]', // [speculative]
+    "span.review-date", // [speculative] older markup
+  ],
   // [unverified] The "Verified Purchase" badge.
-  verified: ['[data-hook="avp-badge"]', "span.a-declarative [data-hook='avp-badge']"],
+  verified: [
+    '[data-hook="avp-badge"]',
+    '[data-hook="avp-badge-linkless"]', // [speculative]
+    '[data-hook*="avp-badge"]', // [speculative]
+    "span.a-declarative [data-hook='avp-badge']",
+  ],
   // [unverified] "N people found this helpful".
-  helpful: ['[data-hook="helpful-vote-statement"]'],
+  helpful: [
+    '[data-hook="helpful-vote-statement"]',
+    '[data-hook*="helpful"]', // [speculative]
+    "span.cr-vote-text", // [speculative] older markup
+  ],
 } as const satisfies Record<string, readonly string[]>;
 
 /** Product-level fields, read from the /dp/ page. */
 export const PRODUCT = {
   // [unverified] The H1 product title on a product detail page.
-  title: ["#productTitle", "#title span", "h1#title"],
+  title: [
+    "#productTitle",
+    "#title span",
+    "h1#title",
+    "#titleSection #productTitle", // [speculative]
+    'span[data-hook="product-link"]', // [speculative] on /product-reviews/ pages
+  ],
   // [unverified] Breadcrumb trail; its last link is the narrowest category.
   breadcrumb: [
     "#wayfinding-breadcrumbs_feature_div ul li:last-of-type a",
@@ -69,6 +143,7 @@ export const PRODUCT = {
 export const SEE_ALL_REVIEWS: readonly string[] = [
   // [unverified] The "See more reviews" / "See all reviews" footer link.
   '[data-hook="see-all-reviews-link-foot"]',
+  '[data-hook*="see-all-reviews"]', // [speculative]
   'a[href*="/product-reviews/"]',
 ];
 
@@ -79,10 +154,26 @@ export const PANEL_ANCHOR: readonly string[] = [
   "#cm_cr-review_list",
 ];
 
+/**
+ * Matches for one selector, treating an unusable selector as a miss.
+ *
+ * The candidate lists contain modern syntax such as `:has()`. An engine that
+ * does not support one throws on `querySelectorAll`, and an uncaught throw here
+ * would take out scraping entirely rather than costing a single candidate. A
+ * selector we cannot run is a selector that did not match.
+ */
+function matchAll(root: ParentNode, selector: string): Element[] {
+  try {
+    return Array.from(root.querySelectorAll(selector));
+  } catch {
+    return [];
+  }
+}
+
 /** First matching element for an ordered candidate list. */
 export function queryFirst(root: ParentNode, candidates: readonly string[]): Element | null {
   for (const selector of candidates) {
-    const found = root.querySelector(selector);
+    const found = matchAll(root, selector)[0];
     if (found) return found;
   }
   return null;
@@ -91,14 +182,52 @@ export function queryFirst(root: ParentNode, candidates: readonly string[]): Ele
 /** Matches for the first candidate that finds anything at all. */
 export function queryAll(root: ParentNode, candidates: readonly string[]): Element[] {
   for (const selector of candidates) {
-    const found = Array.from(root.querySelectorAll(selector));
+    const found = matchAll(root, selector);
     if (found.length > 0) return found;
   }
   return [];
 }
 
-/** Trimmed, whitespace-collapsed text of the first matching candidate. */
-export function textOf(root: ParentNode, candidates: readonly string[]): string {
-  const element = queryFirst(root, candidates);
+/** Trimmed and whitespace-collapsed. */
+function cleanText(element: Element | null): string {
   return (element?.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Text of the first candidate that yields any, trying every element a candidate
+ * matches before moving on.
+ *
+ * Taking the first matching element regardless of its content is what makes a
+ * widened candidate list dangerous: Amazon's review title anchor contains a
+ * spacer span, so a broader selector matched it, found nothing, and the title
+ * came back empty while a perfectly good later candidate went untried. An empty
+ * match is not an answer.
+ */
+export function textOf(root: ParentNode, candidates: readonly string[]): string {
+  for (const selector of candidates) {
+    for (const element of matchAll(root, selector)) {
+      const text = cleanText(element);
+      if (text) return text;
+    }
+  }
+  return "";
+}
+
+/**
+ * First element from these candidates that satisfies `accept`.
+ *
+ * Same reasoning as `textOf`: a candidate that matches an element we cannot use
+ * must not stop us trying the rest.
+ */
+export function queryFirstUsable(
+  root: ParentNode,
+  candidates: readonly string[],
+  accept: (element: Element) => boolean,
+): Element | null {
+  for (const selector of candidates) {
+    for (const element of matchAll(root, selector)) {
+      if (accept(element)) return element;
+    }
+  }
+  return null;
 }

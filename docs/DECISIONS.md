@@ -190,3 +190,24 @@ One line per non-obvious choice, with the reason.
 - The e2e checks the health warning on deliberately broken markup served at a real amazon.in URL,
   and reaches `__sift` over CDP, because page.evaluate() runs in the main world and cannot see the
   isolated one. It also asserts a healthy page stays silent.
+
+## Widening the selector lists
+
+- Two fall-through bugs were fixed before any candidate was added, because widening on top of
+  them would have made extraction worse rather than better. Both were demonstrated with failing
+  tests first.
+- `textOf` took the first matching element even when it had no text. Amazon's review title anchor
+  contains a spacer span, so a broader candidate matched it, returned "", and a good later
+  candidate was never tried. It now tries every element of every candidate until one yields text.
+- A list container that matched but contained no cards blocked the document-wide fallback. Each
+  container candidate is now accepted only if it actually contains cards.
+- Ratings use the same rule: candidates are tried until one yields a parseable value, so a star
+  element with neither readable text nor a star class is skipped rather than taken as "no rating".
+- All selector queries go through a guard that treats an unusable selector as a miss. The lists
+  now contain `:has()`, and on an engine without support an uncaught throw would take out
+  scraping entirely rather than costing one candidate.
+- Speculative candidates sit last in every list, so they fire only when everything better has
+  missed, and card-level validation (no body, no review) limits what a wrong match can do.
+- Negative tests matter more than positive ones here: wrong data is silently scored, billed and
+  believed, while missing data is visible. Product descriptions, sponsored carousels, Q&A blocks
+  and the product title are all asserted NOT to become reviews.

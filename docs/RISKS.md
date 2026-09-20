@@ -59,8 +59,34 @@ which reads as "this extension is broken" rather than "this page is unusual".
 4. Still open, and still the only thing that actually retires this risk: run
    `check-fixture` against a real saved page and fix what it reports. Detection
    tells you when it breaks; only verification tells you whether it works.
-5. Longer term: widen each candidate list rather than replacing entries, so one
-   markup variant does not break the other.
+5. ~~Widen each candidate list rather than replacing entries~~ — done, but the
+   widening was the smaller half of the work. Two mechanisms had to be fixed
+   first, because adding candidates on top of them would have made things worse:
+
+   - `textOf` took the first matching *element* even when it had no text. Amazon's
+     title anchor holds a spacer span, so a broader candidate matched it, found
+     nothing, and returned an empty title while a good later candidate went
+     untried. It now tries every element of every candidate until one yields text.
+   - A list container that matched but held no cards blocked the document-wide
+     fallback entirely. Each container candidate is now accepted only if it
+     actually contains cards.
+
+   Both were demonstrated with failing tests before being fixed. Ratings work the
+   same way now: candidates are tried until one yields a parseable value, so a
+   star element with neither readable text nor a star class is skipped rather
+   than accepted as "no rating".
+
+   Selectors are also run through a guard that treats an unusable selector as a
+   miss. The lists now contain `:has()`, and on an engine that does not support
+   it an uncaught throw would take out scraping entirely rather than costing one
+   candidate.
+
+   Speculative entries sit last in every list, so they only fire once everything
+   better has missed. `test/selectors.test.ts` covers both directions: the
+   markup variants the widening is meant to survive, and the things a broad
+   candidate must NOT match — product descriptions, sponsored carousels, Q&A
+   entries, the product title. Wrong data is worse than missing data, because it
+   gets scored, billed and believed.
 
 ---
 

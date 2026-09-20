@@ -16,6 +16,7 @@ import {
   SEE_ALL_REVIEWS,
   queryAll,
   queryFirst,
+  queryFirstUsable,
   textOf,
 } from "./selectors.js";
 
@@ -108,17 +109,27 @@ function reviewIdOf(card: Element, title: string, body: string): string {
   return syntheticId(title, body);
 }
 
+/** The rating an element carries, from its text or its icon class. */
+function ratingOf(element: Element): number | null {
+  return parseRating(
+    (element.textContent ?? "").replace(/\s+/g, " ").trim(),
+    element.getAttribute("class") ?? "",
+  );
+}
+
 /** Parse one review card. Returns null when there is no body text to score. */
 export function parseReviewCard(card: Element): Review | null {
   const body = textOf(card, REVIEW_FIELD.body);
   if (!body) return null;
 
   const title = textOf(card, REVIEW_FIELD.title);
-  const ratingElement = queryFirst(card, REVIEW_FIELD.rating);
-  const rating = parseRating(
-    (ratingElement?.textContent ?? "").replace(/\s+/g, " ").trim(),
-    ratingElement?.getAttribute("class") ?? "",
+
+  // Take the first candidate that yields an actual rating. A star element with
+  // neither readable text nor a usable class must not stop the search.
+  const ratingElement = queryFirstUsable(card, REVIEW_FIELD.rating, (element) =>
+    ratingOf(element) !== null,
   );
+  const rating = ratingElement ? ratingOf(ratingElement) : null;
 
   return {
     id: reviewIdOf(card, title, body),
@@ -129,6 +140,25 @@ export function parseReviewCard(card: Element): Review | null {
     date: parseReviewDate(textOf(card, REVIEW_FIELD.date)),
     helpful_votes: parseHelpfulVotes(textOf(card, REVIEW_FIELD.helpful)),
   };
+}
+
+/**
+ * Review cards, scoped to a list container where one works.
+ *
+ * Each list candidate is tried in turn and only accepted if it actually
+ * contains cards; a container that matches but holds none must not shadow the
+ * rest. The last resort is scanning the whole document, which is safe because
+ * `parseReviewCard` discards anything without body text, so a false-positive
+ * card costs nothing.
+ */
+function findCards(root: ParentNode): Element[] {
+  for (const listSelector of REVIEW_LIST) {
+    const lists = queryAll(root, [listSelector]);
+    if (lists.length === 0) continue;
+    const cards = lists.flatMap((list) => queryAll(list, REVIEW_CARD));
+    if (cards.length > 0) return cards;
+  }
+  return queryAll(root, REVIEW_CARD);
 }
 
 /** A parsed review together with the element it came from. */
@@ -144,9 +174,7 @@ export interface ScrapedCard {
  * the whole document for review cards.
  */
 export function scrapeReviewCards(root: ParentNode): ScrapedCard[] {
-  const lists = queryAll(root, REVIEW_LIST);
-  const cards =
-    lists.length > 0 ? lists.flatMap((list) => queryAll(list, REVIEW_CARD)) : queryAll(root, REVIEW_CARD);
+  const cards = findCards(root);
 
   const seen = new Set<string>();
   const scraped: ScrapedCard[] = [];

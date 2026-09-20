@@ -147,7 +147,7 @@ in [PRIVACY.md](PRIVACY.md).
 
 Being straight about this, because a passing test suite can look like more than it is.
 
-**Verified.** 206 unit tests and an end-to-end run that loads the built extension
+**Verified.** 231 unit tests and an end-to-end run that loads the built extension
 into Chromium, serves a saved page at a real `amazon.in` URL so the manifest's match
 patterns and page detection do their actual work, and checks that the panel mounts,
 scores, badges, dims, reorders and then stops re-rendering. The retry and backoff
@@ -230,7 +230,7 @@ run `npm run check-fixture -- <file.html>`, and correct whatever it reports in
 ## Development
 
 ```sh
-npm test              # 206 unit tests, no network
+npm test              # 231 unit tests, no network
 npm run typecheck
 npm run build         # produces dist/
 npm run e2e           # loads dist/ into Chromium and drives the panel
@@ -259,6 +259,12 @@ fixtures/       saved review HTML for parser tests
 
 `src/content/selectors.ts` holds every Amazon selector. Amazon changes its markup
 often, and that file is the whole blast radius.
+
+Each field lists several candidates, tried in order from most precise to most
+general, and tagged `[corroborated]`, `[unverified]` or `[speculative]`. A
+candidate that matches but yields nothing usable falls through to the next, so
+adding a broad fallback cannot shadow a good one. Add to a list rather than
+replacing an entry: one markup variant should not cost the other.
 
 ## Recording the 30-second demo
 
