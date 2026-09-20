@@ -37,6 +37,7 @@ export interface SettingsResponse {
   defaultThreshold: number;
   enabledSites: Record<string, boolean>;
   confirmAboveUsd: number;
+  maxPageSpendUsd: number;
 }
 
 export type Request = ScoreRequest | SettingsRequest;

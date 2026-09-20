@@ -8,9 +8,16 @@ export function estimateCostUsd(inputTokens: number): number {
   return (inputTokens / 1_000_000) * INPUT_USD_PER_MTOK;
 }
 
-/** Format a cost for display; sub-cent costs are the normal case, so show enough digits. */
+/**
+ * Format a cost for display; sub-cent costs are the normal case, so show enough
+ * digits.
+ *
+ * Anything smaller than the smallest figure four decimals can show becomes
+ * "<$0.0001" rather than "$0.0000", which would read as free.
+ */
 export function formatCostUsd(usd: number): string {
   if (usd === 0) return "$0";
+  if (usd < 0.0001) return "<$0.0001";
   if (usd < 0.01) return `$${usd.toFixed(4)}`;
   return `$${usd.toFixed(2)}`;
 }

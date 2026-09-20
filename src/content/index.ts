@@ -12,7 +12,7 @@ import { collectReviews, DEFAULT_REVIEW_CAP } from "./collect.js";
 import { decorateCard, reorderCards, setDimmed, undecorate } from "./decorate.js";
 import { detectPage, type PageTarget } from "./page.js";
 import { Panel, type PanelState } from "./panel.js";
-import { chunk, sendWithRetry } from "./resume.js";
+import { chunk, orderByViewport, sendWithRetry, withinBudget } from "./resume.js";
 import { PANEL_ANCHOR, queryFirst } from "./selectors.js";
 import { hasSeeAllReviewsLink, scrapeProduct, scrapeReviewCards } from "./scrape.js";
 import { buildQuestions, customKey, type ActiveFilters, type BuiltQuestion } from "../questions/buildQuestions.js";
@@ -61,6 +61,12 @@ class Sift {
   #panel: Panel | null = null;
   #reviewCap = DEFAULT_REVIEW_CAP;
   #confirmAboveUsd = 0.01;
+  /** The ceiling from settings; also the size of each "Continue" grant. */
+  #maxPageSpendUsd = 0.05;
+  /** The ceiling in force right now, raised by each Continue. */
+  #budgetUsd = 0.05;
+  /** Real spend on this page so far, from the API's own token counts. */
+  #spentUsd = 0;
   #observer: MutationObserver | null = null;
   #debounce: ReturnType<typeof setTimeout> | null = null;
   #scoring = false;
@@ -75,6 +81,8 @@ class Sift {
 
     this.#reviewCap = settings?.reviewCap ?? DEFAULT_REVIEW_CAP;
     this.#confirmAboveUsd = settings?.confirmAboveUsd ?? 0.01;
+    this.#maxPageSpendUsd = settings?.maxPageSpendUsd ?? 0.05;
+    this.#budgetUsd = this.#maxPageSpendUsd;
     this.#product = scrapeProduct(document);
     this.#ingest();
 
@@ -241,7 +249,17 @@ class Sift {
 
     if (this.#scoring) return;
 
-    const pending = [...this.#reviews.values()].filter((review) => !this.#scoredUnder.has(review.id));
+    // What the user is looking at goes first. If the run stops early, for any
+    // reason, the money went on the reviews actually on screen. Recomputed every
+    // time, so resuming after a scroll picks up where the user now is.
+    const pending = orderByViewport(
+      [...this.#reviews.values()].filter((review) => !this.#scoredUnder.has(review.id)),
+      (review) => {
+        const card = this.#cards.get(review.id);
+        return card?.isConnected ? card.getBoundingClientRect().top : null;
+      },
+      window.innerHeight,
+    );
     if (pending.length === 0) {
       this.#render(state);
       return;
@@ -269,11 +287,35 @@ class Sift {
       const chunks = chunk(pending, CHUNK_SIZE);
 
       let done = 0;
-      let inputTokens = 0;
       let fullyCached = 0;
       let failed = 0;
 
       for (const batch of chunks) {
+        // Check the ceiling before sending, not after. A limit you only notice
+        // having crossed is not a limit.
+        const chunkEstimate = estimateCostUsd(this.#estimateTokens(batch, built));
+        if (!withinBudget(this.#spentUsd, chunkEstimate, this.#budgetUsd)) {
+          // Continue must always buy progress. Granting exactly one more
+          // ceiling would strand a user whose ceiling is smaller than a single
+          // chunk: they could click forever and never score a review.
+          const grant = Math.max(this.#maxPageSpendUsd, chunkEstimate);
+          this.#panel.setStatus(
+            `Stopped at the ${formatCostUsd(this.#budgetUsd)} page limit.` +
+              ` ${this.#answers.size} of ${this.#reviews.size} reviews scored,` +
+              ` ~${formatCostUsd(this.#spentUsd)} spent.` +
+              ` Continue allows another ${formatCostUsd(grant)}.`,
+            true,
+            {
+              label: "Continue",
+              onClick: () => {
+                this.#budgetUsd = this.#spentUsd + grant;
+                void this.#score(state, { confirmed: true });
+              },
+            },
+          );
+          return;
+        }
+
         this.#panel.setStatus(`Scoring ${done} of ${pending.length} reviews...`);
 
         const response = await this.#sendChunk(batch, active);
@@ -295,7 +337,8 @@ class Sift {
           this.#scoredUnder.add(id);
         }
         done += batch.length;
-        inputTokens += response.summary.inputTokens;
+        // Real spend, from the API's own token counts, not from the estimate.
+        this.#spentUsd += estimateCostUsd(response.summary.inputTokens);
         fullyCached += response.summary.fullyCached;
         failed += Object.values(response.summary.failures).reduce((sum, count) => sum + (count ?? 0), 0);
 
@@ -305,7 +348,7 @@ class Sift {
 
       this.#panel.setStatus(
         `${this.#answers.size}/${this.#reviews.size} reviews scored` +
-          ` · ~${formatCostUsd(estimateCostUsd(inputTokens))} this page` +
+          ` · ~${formatCostUsd(this.#spentUsd)} this page` +
           (fullyCached > 0 ? ` · ${fullyCached} from cache` : "") +
           (failed > 0 ? ` · ${failed} unscored` : ""),
         failed > 0,

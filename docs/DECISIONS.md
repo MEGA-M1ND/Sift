@@ -163,3 +163,16 @@ One line per non-obvious choice, with the reason.
   world with their own `chrome` object, so patching sendMessage from the test page cannot reach
   them; a test that appeared to cover it would be testing nothing. chunk() and sendWithRetry()
   were extracted to src/content/resume.ts and unit-tested instead.
+- Reviews are queued in viewport order: on screen first, then below the fold nearest-first, then
+  scrolled past. Recomputed on every run, so resuming after a scroll prioritises where the user
+  now is. This is what makes a spend ceiling tolerable rather than arbitrary: a run that stops
+  half way has spent the money on what the person was reading.
+- A card whose position cannot be measured sorts last but is never dropped. Unmeasurable is not
+  the same as unwanted.
+- The page spend ceiling is checked against the ESTIMATE before each chunk, not against real
+  spend after it. A limit you only notice having crossed is not a limit.
+- "Continue" grants max(ceiling, next chunk) rather than exactly one more ceiling. The e2e found
+  the reason: with a ceiling smaller than one chunk, a fixed grant let the user click Continue
+  forever without ever scoring a review. Continue must always buy progress.
+- formatCostUsd renders anything below $0.0001 as "<$0.0001" rather than "$0.0000". The ceiling
+  message surfaced it: a real limit was being displayed as free.

@@ -20,8 +20,8 @@ describe("estimateCostUsd", () => {
 
 describe("formatCostUsd", () => {
   it("shows enough digits for the sub-cent case, which is the normal one", () => {
-    expect(formatCostUsd(0.000021)).toBe("$0.0000");
     expect(formatCostUsd(0.0043)).toBe("$0.0043");
+    expect(formatCostUsd(0.0001)).toBe("$0.0001");
   });
 
   it("switches to cents above a cent", () => {
@@ -30,6 +30,16 @@ describe("formatCostUsd", () => {
 
   it("shows exactly zero as zero, not as $0.0000", () => {
     expect(formatCostUsd(0)).toBe("$0");
+  });
+
+  it("does not round a tiny but real cost down to nothing", () => {
+    // "$0.0000" would read as free, which is a different claim entirely.
+    expect(formatCostUsd(0.00002)).toBe("<$0.0001");
+    expect(formatCostUsd(0.000000001)).toBe("<$0.0001");
+  });
+
+  it("starts showing four decimals at the point they mean something", () => {
+    expect(formatCostUsd(0.0001)).toBe("$0.0001");
   });
 });
 

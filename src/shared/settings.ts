@@ -19,6 +19,14 @@ export interface Settings {
    * A run is never started without the user's say-so above this figure.
    */
   confirmAboveUsd: number;
+  /**
+   * Hard ceiling on what one page may spend, in USD. Scoring stops when the
+   * next chunk would cross it. 0 means no ceiling.
+   *
+   * This is the backstop for the case the confirmation does not cover: a run
+   * that was agreed to, but turns out to cost far more than expected.
+   */
+  maxPageSpendUsd: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -27,6 +35,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultThreshold: 0.7,
   enabledSites: { "amazon.in": true, "amazon.com": true },
   confirmAboveUsd: 0.01,
+  maxPageSpendUsd: 0.05,
 };
 
 const KEY = "sift:settings";
@@ -55,6 +64,10 @@ export async function loadSettings(): Promise<Settings> {
         typeof partial.confirmAboveUsd === "number" && partial.confirmAboveUsd >= 0
           ? partial.confirmAboveUsd
           : DEFAULT_SETTINGS.confirmAboveUsd,
+      maxPageSpendUsd:
+        typeof partial.maxPageSpendUsd === "number" && partial.maxPageSpendUsd >= 0
+          ? partial.maxPageSpendUsd
+          : DEFAULT_SETTINGS.maxPageSpendUsd,
     };
   } catch {
     // Storage can be unavailable; the extension must still not break the page.

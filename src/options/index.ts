@@ -33,6 +33,7 @@ async function main(): Promise<void> {
   const cap = el<HTMLInputElement>("cap");
   const threshold = el<HTMLInputElement>("threshold");
   const confirmAbove = el<HTMLInputElement>("confirm");
+  const ceiling = el<HTMLInputElement>("ceiling");
   const thresholdValue = el("thresholdValue");
   const siteIn = el<HTMLInputElement>("site-in");
   const siteCom = el<HTMLInputElement>("site-com");
@@ -47,6 +48,7 @@ async function main(): Promise<void> {
   cap.value = String(settings.reviewCap);
   threshold.value = String(settings.defaultThreshold);
   confirmAbove.value = String(settings.confirmAboveUsd);
+  ceiling.value = String(settings.maxPageSpendUsd);
   thresholdValue.textContent = settings.defaultThreshold.toFixed(2);
   siteIn.checked = settings.enabledSites["amazon.in"];
   siteCom.checked = settings.enabledSites["amazon.com"];
@@ -88,12 +90,23 @@ async function main(): Promise<void> {
       return;
     }
 
+    const ceilingValue = Number.parseFloat(ceiling.value);
+    if (!Number.isFinite(ceilingValue) || ceilingValue < 0) {
+      flash(status, "The per-page limit must be zero or more.", true);
+      return;
+    }
+    if (ceilingValue > 0 && ceilingValue < confirmValue) {
+      flash(status, "The per-page limit is below the confirmation amount, so runs would stop as soon as they start.", true);
+      return;
+    }
+
     const next: Settings = {
       apiKey: key.value.trim(),
       reviewCap: capValue,
       defaultThreshold: Number(threshold.value),
       enabledSites: { "amazon.in": siteIn.checked, "amazon.com": siteCom.checked },
       confirmAboveUsd: confirmValue,
+      maxPageSpendUsd: ceilingValue,
     };
 
     void saveSettings(next).then(() => {

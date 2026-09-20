@@ -94,6 +94,17 @@
           time.
         </span>
       </div>
+
+      <label for="ceiling">Hard limit per page</label>
+      <div class="row">
+        <span>$</span>
+        <input id="ceiling" type="number" min="0" max="10" step="0.001" style="width:120px" />
+        <span class="muted" style="margin:0">
+          Scoring stops before crossing this, keeping whatever it already scored. Reviews you
+          are looking at are scored first, so a stopped run still covers what is on screen.
+          Set to 0 for no limit.
+        </span>
+      </div>
     </div>
 
     <div class="card">

@@ -133,8 +133,10 @@ memoised per key.
 
 ## 5. Request amplification from filter churn and preset stacking
 
-**Status: partly addressed.** The spend confirmation is implemented. The per-page
-ceiling and scoring-visible-first are not.
+**Status: addressed.** The confirmation, the hard per-page ceiling and
+viewport-first ordering are all implemented. What remains is a product question
+rather than a defect: near-identical filter wordings are still separate cache
+keys, and probably should be.
 
 **Likelihood: medium. Impact: money, and it is the user's money.**
 
@@ -156,13 +158,31 @@ warns them, and nothing caps the spend.
    cancel; there is no modal over someone's shopping. Set it to 0 to be asked every
    time. The estimate is characters over four, calibrated against real
    `usage.input_tokens`; the figure shown after a run is the real one.
-2. Still open: a hard per-page ceiling that stops a run mid-way. The confirmation
-   covers the surprise, not a runaway.
-3. Still open: score visible reviews first, the rest on demand. Most users look at
-   the top twenty, so this would cut typical spend by an order of magnitude.
-4. Still open: rewording a filter is a new cache key, so each experiment pays in
-   full. Nothing dedupes near-identical filter text, and probably nothing should —
-   but the confirmation at least makes the cost visible each time.
+2. ~~A hard per-page ceiling~~ — done. "Hard limit per page" (default $0.05) is
+   checked against the estimate *before* each chunk is sent, because a limit you
+   only notice having crossed is not a limit. When it stops, it says how much was
+   spent and offers **Continue**.
+
+   Continue grants `max(ceiling, next chunk)` rather than exactly one more
+   ceiling. The e2e caught why: with a ceiling smaller than a single chunk, a
+   fixed grant left the user clicking Continue forever without ever scoring a
+   review. Continue must always buy progress.
+
+3. ~~Score visible reviews first~~ — done. `orderByViewport` sorts the queue into
+   on-screen, then below the fold nearest-first, then scrolled-past. The order is
+   recomputed on every run, so resuming after a scroll picks up where the user
+   now is.
+
+   This is what makes the ceiling tolerable rather than arbitrary: a run that
+   stops half way has spent its money on the reviews the person was reading. The
+   "rest on demand" half of this idea is covered by the same mechanism — the
+   ceiling stops, Continue resumes.
+
+4. Still open, and possibly should stay open: rewording a filter is a new cache
+   key, so each experiment pays in full. Nothing dedupes near-identical filter
+   text, and nothing obviously should — "battery dies" and "battery degrades
+   quickly" are genuinely different questions. The confirmation makes the cost
+   visible each time, which may be the right answer.
 
 ---
 

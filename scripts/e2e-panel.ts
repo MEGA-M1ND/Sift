@@ -254,7 +254,7 @@ async function main(): Promise<void> {
     const prompt = await panel2.locator(".status").textContent();
     console.log(`  confirm prompt: ${JSON.stringify(prompt?.trim())}`);
     check("a spend above the limit asks before scoring", /Score \d+ reviews against \d+ questions\?/.test(prompt ?? ""));
-    check("the prompt names a cost", /About \$/.test(prompt ?? ""));
+    check("the prompt names a cost", /About <?\$/.test(prompt ?? ""));
 
     // Nothing may have been scored while the prompt is up.
     await page2.waitForTimeout(1200);
@@ -271,6 +271,61 @@ async function main(): Promise<void> {
     });
     check("pressing Score runs the scoring", true);
     await page2.close();
+
+    // ---- the hard per-page ceiling ----
+    const opts3 = await context.newPage();
+    await opts3.goto(`chrome-extension://${id}/src/options/index.html`, { waitUntil: "domcontentloaded" });
+    await opts3.waitForSelector("#ceiling");
+    // A ceiling below what one chunk costs, so the very first chunk is refused.
+    await opts3.fill("#confirm", "0");
+    await opts3.fill("#ceiling", "0.00002");
+    await opts3.click("#save");
+    await opts3.waitForFunction(() => document.querySelector("#status")?.textContent?.startsWith("Saved"));
+    await opts3.close();
+
+    const page4 = await context.newPage();
+    await page4.goto(PRODUCT_URL, { waitUntil: "domcontentloaded" });
+    await page4.locator("#sift-panel-host").waitFor({ state: "attached", timeout: 15_000 });
+    await page4.locator("#sift-panel-host input[type=text]").fill("battery dies within a year");
+    await page4.locator("#sift-panel-host button.add").click();
+    // Past the confirmation first.
+    await page4.waitForSelector("#sift-panel-host button.action:not([hidden])", { timeout: 10_000 });
+    await page4.locator("#sift-panel-host button.action").click();
+
+    await page4.waitForFunction(
+      () =>
+        document
+          .querySelector("#sift-panel-host")
+          ?.shadowRoot?.querySelector(".status")
+          ?.textContent?.includes("page limit"),
+      undefined,
+      { timeout: 20_000 },
+    );
+    const capped = await page4.locator("#sift-panel-host .status").textContent();
+    console.log(`  at the ceiling: ${JSON.stringify(capped?.trim())}`);
+    check("a run stops at the page spend limit", /page limit/.test(capped ?? ""));
+    check("the limit message says how much was spent", /spent/.test(capped ?? ""));
+    check(
+      "nothing was scored, because the first chunk already crossed the limit",
+      (await page4.locator("[data-sift-badge]").count()) === 0,
+    );
+
+    const continueLabel = await page4.locator("#sift-panel-host button.action").textContent();
+    console.log(`  offered action: ${JSON.stringify(continueLabel?.trim())}`);
+    check("a Continue button is offered", continueLabel?.trim() === "Continue");
+    await page4.screenshot({ path: "docs/ceiling.png", fullPage: true });
+
+    // Continue grants one more limit's worth, which is enough for this page.
+    await page4.locator("#sift-panel-host button.action").click();
+    await page4.waitForFunction(() => document.querySelectorAll("[data-sift-badge]").length > 0, undefined, {
+      timeout: 20_000,
+    });
+    check("Continue grants another limit's worth and the run finishes", true);
+    await page4.close();
+
+    // NOTE: viewport ordering is unit-tested rather than checked here. The
+    // fixture has four reviews, all on screen and all in one chunk, so the page
+    // cannot distinguish the orderings; test/resume.test.ts covers it properly.
 
     // NOTE: the worker-eviction path is NOT exercised here. Content scripts run
     // in an isolated world with their own `chrome` object, so a page-side patch

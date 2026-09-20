@@ -104,6 +104,7 @@ async function handleSettings(): Promise<SettingsResponse> {
     defaultThreshold: settings.defaultThreshold,
     enabledSites: settings.enabledSites,
     confirmAboveUsd: settings.confirmAboveUsd,
+    maxPageSpendUsd: settings.maxPageSpendUsd,
   };
 }
 
