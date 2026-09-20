@@ -44,6 +44,19 @@ with least-recently-used eviction. A repeat visit to the same product makes zero
 requests. Changing the threshold or the sort never re-scores anything, because the
 cached answers have not changed — only how they are displayed.
 
+Reviews are sent in chunks of 50 rather than one message per page. Chrome evicts an
+idle service worker after about 30 seconds, so one long message can outlive the
+worker that is meant to answer it. Chunking keeps it awake, paints results as they
+arrive, and makes an eviction cost one chunk. If a message finds no worker at all,
+Sift retries once and then offers a **Resume** button rather than asking you to
+reload.
+
+Before a run that would cost more than you allow (default $0.01), the panel shows
+what it is about to do — "Score 300 reviews against 11 questions? About $0.0043." —
+and waits. Doing nothing is the cancel.
+
+![The spend confirmation](docs/confirm.png)
+
 ## Filters
 
 **Your own.** Type anything. It becomes one yes/no question pointed at the review's
@@ -107,6 +120,7 @@ The settings page opens on first install. Paste a TypeSafe API key and save.
 | API key | empty | Stored in `chrome.storage.local`. Without it, Sift shows one line in the panel and changes nothing else on the page. |
 | Maximum reviews per page | 300 | Each review is one request. 300 is roughly $0.003. |
 | Default match threshold | 0.70 | Where the panel's slider starts. |
+| Ask before spending more than | $0.01 | Above this, the panel shows the estimate and waits for you to press Score. 0 asks every time. |
 | amazon.in / amazon.com | both on | Per-site switch. |
 | Clear cache | — | Drops every cached answer. Next visit pays again. |
 
@@ -122,7 +136,7 @@ in [PRIVACY.md](PRIVACY.md).
 
 Being straight about this, because a passing test suite can look like more than it is.
 
-**Verified.** 151 unit tests and an end-to-end run that loads the built extension
+**Verified.** 171 unit tests and an end-to-end run that loads the built extension
 into Chromium, serves a saved page at a real `amazon.in` URL so the manifest's match
 patterns and page detection do their actual work, and checks that the panel mounts,
 scores, badges, dims, reorders and then stops re-rendering. The retry and backoff
@@ -166,7 +180,7 @@ that has not been tested against Amazon either.
 ## Development
 
 ```sh
-npm test              # 151 unit tests, no network
+npm test              # 171 unit tests, no network
 npm run typecheck
 npm run build         # produces dist/
 npm run e2e           # loads dist/ into Chromium and drives the panel

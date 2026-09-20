@@ -12,9 +12,10 @@ import { collectReviews, DEFAULT_REVIEW_CAP } from "./collect.js";
 import { decorateCard, reorderCards, setDimmed, undecorate } from "./decorate.js";
 import { detectPage, type PageTarget } from "./page.js";
 import { Panel, type PanelState } from "./panel.js";
+import { chunk, sendWithRetry } from "./resume.js";
 import { PANEL_ANCHOR, queryFirst } from "./selectors.js";
 import { hasSeeAllReviewsLink, scrapeProduct, scrapeReviewCards } from "./scrape.js";
-import { customKey, type ActiveFilters } from "../questions/buildQuestions.js";
+import { buildQuestions, customKey, type ActiveFilters, type BuiltQuestion } from "../questions/buildQuestions.js";
 import {
   passesThreshold,
   presetVerdictKey,
@@ -24,13 +25,26 @@ import {
   type ReviewVerdicts,
 } from "../questions/combine.js";
 import { PRESETS } from "../questions/presets.js";
-import { formatCostUsd } from "../shared/cost.js";
+import { estimateCostUsd, estimateTokens, formatCostUsd } from "../shared/cost.js";
 import { sendMessage } from "../shared/messaging.js";
 import type { ScoreResponse, SettingsResponse } from "../shared/messaging.js";
-import type { ProductContext, Review } from "../shared/types.js";
+import { toState, type ProductContext, type Review } from "../shared/types.js";
 
 /** Debounce for lazy-loaded cards, so a burst of mutations causes one pass. */
 const MUTATION_DEBOUNCE_MS = 400;
+
+/**
+ * Reviews per message to the service worker.
+ *
+ * One message for a whole page can outlive the worker: MV3 evicts it after
+ * roughly 30 seconds idle, and a slow API turns a single long message into a
+ * dropped run. Chunking keeps the worker busy, paints progressively, and makes
+ * an eviction cost one chunk rather than the page.
+ */
+const CHUNK_SIZE = 50;
+
+/** How long to wait before retrying a message that found no worker. */
+const WORKER_WAKE_MS = 300;
 
 class Sift {
   readonly #target: PageTarget;
@@ -46,6 +60,7 @@ class Sift {
 
   #panel: Panel | null = null;
   #reviewCap = DEFAULT_REVIEW_CAP;
+  #confirmAboveUsd = 0.01;
   #observer: MutationObserver | null = null;
   #debounce: ReturnType<typeof setTimeout> | null = null;
   #scoring = false;
@@ -59,6 +74,7 @@ class Sift {
     if (settings && settings.enabledSites[this.#target.site] === false) return;
 
     this.#reviewCap = settings?.reviewCap ?? DEFAULT_REVIEW_CAP;
+    this.#confirmAboveUsd = settings?.confirmAboveUsd ?? 0.01;
     this.#product = scrapeProduct(document);
     this.#ingest();
 
@@ -178,7 +194,42 @@ class Sift {
     await this.#score(state);
   }
 
-  async #score(state: PanelState): Promise<void> {
+  /**
+   * Estimated input tokens for scoring these reviews with these questions.
+   *
+   * Only ever used to decide whether to ask before spending. The figure shown
+   * after a run is the real `usage.input_tokens` the API reported.
+   */
+  #estimateTokens(reviews: readonly Review[], built: readonly BuiltQuestion[]): number {
+    const questionsJson = JSON.stringify(built.map((item) => item.question));
+    let total = 0;
+    for (const review of reviews) {
+      total += estimateTokens(JSON.stringify(toState(this.#product, review)) + questionsJson);
+    }
+    return total;
+  }
+
+  /**
+   * Send one chunk, retrying once.
+   *
+   * The MV3 service worker is evicted after about 30 seconds idle, and a message
+   * to a dead worker rejects rather than waking it in time. The retry is the
+   * wake-up: it almost always succeeds, and the cache means the second attempt
+   * re-asks only what the first never answered.
+   */
+  async #sendChunk(batch: readonly Review[], active: ActiveFilters): Promise<ScoreResponse | null> {
+    const send = () =>
+      sendMessage<ScoreResponse>({
+        type: "sift:score",
+        product: this.#product,
+        reviews: [...batch],
+        active,
+      });
+
+    return sendWithRetry(send, WORKER_WAKE_MS);
+  }
+
+  async #score(state: PanelState, options: { confirmed?: boolean } = {}): Promise<void> {
     if (!this.#panel) return;
     const active = this.#activeFilters(state);
 
@@ -189,44 +240,73 @@ class Sift {
     }
 
     if (this.#scoring) return;
+
+    const pending = [...this.#reviews.values()].filter((review) => !this.#scoredUnder.has(review.id));
+    if (pending.length === 0) {
+      this.#render(state);
+      return;
+    }
+
+    // Ask before spending, above whatever the user set. Doing nothing is the
+    // cancel: no modal, no dialog over someone's shopping.
+    const built = buildQuestions(active);
+    const estimate = estimateCostUsd(this.#estimateTokens(pending, built));
+    if (!options.confirmed && estimate > this.#confirmAboveUsd) {
+      this.#panel.setStatus(
+        `Score ${pending.length} reviews against ${built.length} question${built.length === 1 ? "" : "s"}?` +
+          ` About ${formatCostUsd(estimate)}.`,
+        false,
+        { label: "Score", onClick: () => void this.#score(state, { confirmed: true }) },
+      );
+      return;
+    }
+
     this.#scoring = true;
     try {
-      const pending = [...this.#reviews.values()].filter((review) => !this.#scoredUnder.has(review.id));
-      if (pending.length === 0) {
+      // Chunked so the worker is messaged repeatedly rather than once for the
+      // whole page: it stays awake, results paint as they arrive, and an
+      // eviction costs one chunk instead of everything.
+      const chunks = chunk(pending, CHUNK_SIZE);
+
+      let done = 0;
+      let inputTokens = 0;
+      let fullyCached = 0;
+      let failed = 0;
+
+      for (const batch of chunks) {
+        this.#panel.setStatus(`Scoring ${done} of ${pending.length} reviews...`);
+
+        const response = await this.#sendChunk(batch, active);
+        if (!response) {
+          this.#panel.setStatus(
+            `Scoring stopped after ${done} of ${pending.length} reviews.`,
+            true,
+            { label: "Resume", onClick: () => void this.#score(state, { confirmed: true }) },
+          );
+          return;
+        }
+        if (response.error) {
+          this.#panel.setStatus(response.error.message, true);
+          return;
+        }
+
+        for (const [id, answers] of Object.entries(response.answers)) {
+          this.#answers.set(id, answers);
+          this.#scoredUnder.add(id);
+        }
+        done += batch.length;
+        inputTokens += response.summary.inputTokens;
+        fullyCached += response.summary.fullyCached;
+        failed += Object.values(response.summary.failures).reduce((sum, count) => sum + (count ?? 0), 0);
+
+        // Paint what we have before asking for the next chunk.
         this.#render(state);
-        return;
       }
 
-      this.#panel.setStatus(`Scoring ${pending.length} reviews...`);
-      const response = await sendMessage<ScoreResponse>({
-        type: "sift:score",
-        product: this.#product,
-        reviews: pending,
-        active,
-      });
-
-      if (!response) {
-        this.#panel.setStatus("Sift could not reach its background worker. Reload the page to retry.", true);
-        return;
-      }
-      if (response.error) {
-        this.#panel.setStatus(response.error.message, true);
-        return;
-      }
-
-      for (const [id, answers] of Object.entries(response.answers)) {
-        this.#answers.set(id, answers);
-        this.#scoredUnder.add(id);
-      }
-
-      this.#render(state);
-
-      const { summary } = response;
-      const failed = Object.values(summary.failures).reduce((total, count) => total + (count ?? 0), 0);
       this.#panel.setStatus(
         `${this.#answers.size}/${this.#reviews.size} reviews scored` +
-          ` · ~${formatCostUsd(summary.estimatedCostUsd)} this page` +
-          (summary.fullyCached > 0 ? ` · ${summary.fullyCached} from cache` : "") +
+          ` · ~${formatCostUsd(estimateCostUsd(inputTokens))} this page` +
+          (fullyCached > 0 ? ` · ${fullyCached} from cache` : "") +
           (failed > 0 ? ` · ${failed} unscored` : ""),
         failed > 0,
       );

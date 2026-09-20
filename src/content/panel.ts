@@ -65,8 +65,11 @@ const STYLES = `
   .controls label { display: inline-flex; align-items: center; gap: 6px; }
   input[type="range"] { width: 140px; }
   .val { font-variant-numeric: tabular-nums; font-weight: 700; color: #0f1111; }
-  .status { margin-top: 10px; color: #565959; font-size: 12px; min-height: 16px; }
+  .statusRow { display: flex; align-items: center; gap: 10px; margin-top: 10px; min-height: 26px; }
+  .status { color: #565959; font-size: 12px; }
   .status.warn { color: #b12704; }
+  button.action { background: #ffd814; border-color: #fcd200; font-weight: 700; padding: 5px 14px; }
+  button.action[hidden] { display: none; }
   .hint { color: #565959; font-size: 11px; margin-top: 6px; }
 `;
 
@@ -85,6 +88,8 @@ export class Panel {
   #sliderValue!: HTMLElement;
   #hideToggle!: HTMLInputElement;
   #status!: HTMLElement;
+  #action!: HTMLButtonElement;
+  #onAction: (() => void) | null = null;
 
   constructor(initial: PanelState, callbacks: PanelCallbacks) {
     this.#state = { ...initial };
@@ -124,7 +129,10 @@ export class Panel {
         </label>
         <label><input type="checkbox" class="hide"> Hide below threshold</label>
       </div>
-      <div class="status" role="status" aria-live="polite"></div>
+      <div class="statusRow">
+        <span class="status" role="status" aria-live="polite"></span>
+        <button class="action" type="button" hidden></button>
+      </div>
     `;
 
     this.#root.append(style, wrap);
@@ -137,6 +145,12 @@ export class Panel {
     this.#sliderValue = wrap.querySelector(".val")!;
     this.#hideToggle = wrap.querySelector("input.hide")!;
     this.#status = wrap.querySelector(".status")!;
+    this.#action = wrap.querySelector("button.action")!;
+    this.#action.addEventListener("click", () => {
+      const handler = this.#onAction;
+      this.setStatus("", false);
+      handler?.();
+    });
 
     this.#addButton.addEventListener("click", () => this.#addFilter());
     this.#input.addEventListener("keydown", (event) => {
@@ -230,10 +244,26 @@ export class Panel {
     }
   }
 
-  /** The single status line: counts, cost, or one unobtrusive failure message. */
-  setStatus(text: string, warn = false): void {
+  /**
+   * The single status line: counts, cost, or one unobtrusive failure message.
+   *
+   * An optional button turns it into something the user can act on. That is
+   * deliberately the same mechanism for "this will cost money, press Score" and
+   * for "scoring was interrupted, press Resume": both are a sentence and one
+   * button, and neither should be a modal over someone's shopping.
+   */
+  setStatus(text: string, warn = false, action?: { label: string; onClick: () => void }): void {
     this.#status.textContent = text;
     this.#status.classList.toggle("warn", warn);
+
+    if (action) {
+      this.#onAction = action.onClick;
+      this.#action.textContent = action.label;
+      this.#action.hidden = false;
+    } else {
+      this.#onAction = null;
+      this.#action.hidden = true;
+    }
   }
 }
 

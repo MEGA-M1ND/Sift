@@ -14,3 +14,17 @@ export function formatCostUsd(usd: number): string {
   if (usd < 0.01) return `$${usd.toFixed(4)}`;
   return `$${usd.toFixed(2)}`;
 }
+
+/**
+ * Characters per token, for estimating a request's size before sending it.
+ *
+ * Calibrated against real `usage.input_tokens` from the API: a 1,800-character
+ * request came back as roughly 450 tokens. This is an estimate for a spend
+ * warning, never for billing. The figure reported after a run is the real one
+ * the API returned.
+ */
+export const CHARS_PER_TOKEN = 4;
+
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / CHARS_PER_TOKEN);
+}

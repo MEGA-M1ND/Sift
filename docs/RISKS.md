@@ -94,6 +94,12 @@ but does not remove it, and it has never been tested against the live site.
 
 ## 4. The MV3 service worker is killed in the middle of a scoring run
 
+**Status: addressed.** All three fixes below are implemented. The failure mode is
+now a resumable stop rather than a dead end. Still not observed against a real
+eviction, because a content script's `chrome` object lives in an isolated world
+that a test page cannot reach; the retry and chunking are unit-tested instead
+(`test/resume.test.ts`).
+
 **Likelihood: medium. Impact: a confusing dead end.**
 
 Chrome terminates an idle service worker after about 30 seconds. A 300-review page
@@ -108,17 +114,27 @@ so a retry is cheap — but the current code has no retry. It gives up.
 
 **Fix:**
 
-1. Send reviews in chunks of about 50 instead of one message for the whole page.
-   Each chunk is a short message round trip, the worker stays busy, and partial
-   results paint as they arrive.
-2. On a null response, retry once automatically before showing the error. Most
-   evictions are recoverable on the next message.
-3. Change the error text to say what to do ("scoring was interrupted — click to
-   resume") and make the status line clickable, rather than requiring a reload.
+1. ~~Send reviews in chunks of about 50~~ — done. `CHUNK_SIZE = 50` in
+   `src/content/index.ts`; each chunk paints before the next is requested, so an
+   eviction costs one chunk rather than the run.
+2. ~~On a null response, retry once~~ — done. `sendWithRetry` waits 300ms and
+   sends again; the first message is what wakes the worker. One retry only, since
+   a second failure is not an eviction.
+3. ~~Make the status actionable~~ — done. The status line reads "Scoring stopped
+   after N of M reviews" with a **Resume** button. Resume skips what was already
+   scored, and the cache makes the rest nearly free.
+
+One thing this also fixed: the service worker built a new `SiftClient` per
+message, each with its own concurrency gate. Chunking would have meant two
+in-flight messages running sixteen requests instead of eight. The client is now
+memoised per key.
 
 ---
 
 ## 5. Request amplification from filter churn and preset stacking
+
+**Status: partly addressed.** The spend confirmation is implemented. The per-page
+ceiling and scoring-visible-first are not.
 
 **Likelihood: medium. Impact: money, and it is the user's money.**
 
@@ -134,15 +150,19 @@ warns them, and nothing caps the spend.
 
 **Fix:**
 
-1. Debounce adding a filter, or require Enter rather than scoring on every keystroke
-   — Enter is already the behaviour, so the remaining gap is rapid successive
-   filters.
-2. Show the estimated cost before scoring when it exceeds a threshold: "score 300
-   reviews against 11 questions, about $0.004?" with a confirm. Cheap to add, and it
-   makes the economics visible rather than surprising.
-3. Add a per-page spend ceiling in settings that stops the run and says why.
-4. Consider scoring visible reviews first and the rest on demand. Most users look at
-   the top twenty.
+1. ~~Show the estimated cost before scoring when it exceeds a threshold~~ — done.
+   Above "Ask before spending more than" (default $0.01) the panel shows
+   "Score N reviews against M questions? About $X." and waits. Doing nothing is the
+   cancel; there is no modal over someone's shopping. Set it to 0 to be asked every
+   time. The estimate is characters over four, calibrated against real
+   `usage.input_tokens`; the figure shown after a run is the real one.
+2. Still open: a hard per-page ceiling that stops a run mid-way. The confirmation
+   covers the surprise, not a runaway.
+3. Still open: score visible reviews first, the rest on demand. Most users look at
+   the top twenty, so this would cut typical spend by an order of magnitude.
+4. Still open: rewording a filter is a new cache key, so each experiment pays in
+   full. Nothing dedupes near-identical filter text, and probably nothing should —
+   but the confirmation at least makes the cost visible each time.
 
 ---
 

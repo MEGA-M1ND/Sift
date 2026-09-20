@@ -100,9 +100,13 @@ async function main(): Promise<void> {
 
     // Enter the API key and the other settings through the real settings page.
     const options = await context.newPage();
-    await options.goto(`chrome-extension://${id}/src/options/index.html`);
+    // domcontentloaded, not load: the page is ready once its module runs, and
+    // waiting on every subresource made this flake.
+    await options.goto(`chrome-extension://${id}/src/options/index.html`, { waitUntil: "domcontentloaded" });
+    await options.waitForSelector("#key");
     await options.fill("#key", "test-key-not-a-real-one");
     await options.fill("#cap", "150");
+    await options.fill("#confirm", "0.01");
     await options.evaluate(() => {
       const slider = document.querySelector<HTMLInputElement>("#threshold")!;
       slider.value = "0.62";
@@ -119,13 +123,15 @@ async function main(): Promise<void> {
     const persisted = await options.evaluate(() => ({
       key: document.querySelector<HTMLInputElement>("#key")!.value,
       cap: document.querySelector<HTMLInputElement>("#cap")!.value,
+      confirm: document.querySelector<HTMLInputElement>("#confirm")!.value,
       threshold: document.querySelector<HTMLInputElement>("#threshold")!.value,
       siteCom: document.querySelector<HTMLInputElement>("#site-com")!.checked,
       siteIn: document.querySelector<HTMLInputElement>("#site-in")!.checked,
     }));
     console.log(`  persisted: ${JSON.stringify(persisted)}`);
     check("settings survive a reload", persisted.key === "test-key-not-a-real-one" &&
-      persisted.cap === "150" && persisted.threshold === "0.62" && persisted.siteCom === false);
+      persisted.cap === "150" && persisted.threshold === "0.62" && persisted.siteCom === false &&
+      persisted.confirm === "0.01");
 
     // Put amazon.com back on, and the key masked, before the screenshot.
     await options.check("#site-com");
@@ -224,6 +230,53 @@ async function main(): Promise<void> {
 
     await page.screenshot({ path: "docs/panel.png", fullPage: true });
     console.log("\n  screenshot: docs/panel.png");
+
+    // ---- the spend confirmation ----
+    // Set the threshold to zero so any spend at all has to be confirmed.
+    const opts2 = await context.newPage();
+    await opts2.goto(`chrome-extension://${id}/src/options/index.html`, { waitUntil: "domcontentloaded" });
+    await opts2.waitForSelector("#confirm");
+    await opts2.fill("#confirm", "0");
+    await opts2.click("#save");
+    await opts2.waitForFunction(() => document.querySelector("#status")?.textContent?.startsWith("Saved"));
+    await opts2.close();
+
+    const page2 = await context.newPage();
+    await page2.goto(PRODUCT_URL, { waitUntil: "domcontentloaded" });
+    const panel2 = page2.locator("#sift-panel-host");
+    await panel2.waitFor({ state: "attached", timeout: 15_000 });
+
+    let scoredBeforeConfirm = 0;
+    await page2.locator("#sift-panel-host input[type=text]").fill("battery dies within a year");
+    await page2.locator("#sift-panel-host button.add").click();
+    await page2.waitForSelector("#sift-panel-host button.action:not([hidden])", { timeout: 10_000 });
+
+    const prompt = await panel2.locator(".status").textContent();
+    console.log(`  confirm prompt: ${JSON.stringify(prompt?.trim())}`);
+    check("a spend above the limit asks before scoring", /Score \d+ reviews against \d+ questions\?/.test(prompt ?? ""));
+    check("the prompt names a cost", /About \$/.test(prompt ?? ""));
+
+    // Nothing may have been scored while the prompt is up.
+    await page2.waitForTimeout(1200);
+    scoredBeforeConfirm = await page2.locator("[data-sift-badge]").count();
+    console.log(`  badges while awaiting confirmation: ${scoredBeforeConfirm}`);
+    check("nothing is scored until the user agrees", scoredBeforeConfirm === 0);
+
+    // Capture the prompt itself, not the state after agreeing to it.
+    await page2.screenshot({ path: "docs/confirm.png", fullPage: true });
+
+    await page2.locator("#sift-panel-host button.action").click();
+    await page2.waitForFunction(() => document.querySelectorAll("[data-sift-badge]").length > 0, undefined, {
+      timeout: 20_000,
+    });
+    check("pressing Score runs the scoring", true);
+    await page2.close();
+
+    // NOTE: the worker-eviction path is NOT exercised here. Content scripts run
+    // in an isolated world with their own `chrome` object, so a page-side patch
+    // of chrome.runtime.sendMessage never reaches them, and faking it would test
+    // nothing real. The retry and chunking logic is unit-tested instead, in
+    // test/resume.test.ts.
   } finally {
     await context.close();
   }

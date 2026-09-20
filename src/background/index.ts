@@ -21,6 +21,23 @@ const storage: StorageArea = {
 // One cache for the worker's lifetime; it rebuilds its index after a restart.
 const cache = new AnswerCache(storage);
 
+/**
+ * One client per key, reused across messages.
+ *
+ * The client owns the concurrency gate, so a fresh client per message would let
+ * two in-flight messages run sixteen requests at once instead of eight. Scoring
+ * is now sent in chunks, which makes that a real possibility rather than a
+ * theoretical one.
+ */
+let clientCache: { apiKey: string; client: SiftClient } | null = null;
+
+function clientFor(apiKey: string): SiftClient {
+  if (clientCache?.apiKey === apiKey) return clientCache.client;
+  const client = new SiftClient({ apiKey });
+  clientCache = { apiKey, client };
+  return client;
+}
+
 async function handleScore(request: Extract<Request, { type: "sift:score" }>): Promise<ScoreResponse> {
   const settings = await loadSettings();
 
@@ -51,7 +68,7 @@ async function handleScore(request: Extract<Request, { type: "sift:score" }>): P
 
   let client: SiftClient;
   try {
-    client = new SiftClient({ apiKey: settings.apiKey });
+    client = clientFor(settings.apiKey);
   } catch (error) {
     return {
       type: "sift:scored",
@@ -86,6 +103,7 @@ async function handleSettings(): Promise<SettingsResponse> {
     reviewCap: settings.reviewCap,
     defaultThreshold: settings.defaultThreshold,
     enabledSites: settings.enabledSites,
+    confirmAboveUsd: settings.confirmAboveUsd,
   };
 }
 

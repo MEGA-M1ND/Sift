@@ -84,6 +84,16 @@
         <input id="threshold" type="range" min="0" max="1" step="0.01" />
         <span class="val" id="thresholdValue">0.70</span>
       </div>
+
+      <label for="confirm">Ask before spending more than</label>
+      <div class="row">
+        <span>$</span>
+        <input id="confirm" type="number" min="0" max="10" step="0.001" style="width:120px" />
+        <span class="muted" style="margin:0">
+          Sift shows the estimate and waits for you to press Score. Set to 0 to be asked every
+          time.
+        </span>
+      </div>
     </div>
 
     <div class="card">

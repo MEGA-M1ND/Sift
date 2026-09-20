@@ -140,3 +140,26 @@ One line per non-obvious choice, with the reason.
 - Pagination waits 600-1000ms with jitter between page fetches. Thirty back-to-back same-origin
   requests is what scraping looks like, and a throttled or CAPTCHA'd account would be the user's
   problem, caused by us. The delay is injectable so tests do not sit through it.
+
+## Post-phase-5 hardening
+
+- Scoring is chunked at 50 reviews per message. MV3 evicts an idle service worker after about
+  30 seconds, so a single message covering a whole page can outlive the worker meant to answer
+  it. Chunking keeps it awake, paints progressively, and makes an eviction cost one chunk.
+- A message that finds no worker is retried once after 300ms, because the first message is what
+  wakes the worker. One retry only: a second failure is not an eviction, and hammering a broken
+  channel helps nobody. After that the user gets a Resume button, which skips what was already
+  scored and pays cache prices for the rest.
+- The service worker memoises its SiftClient per API key. It previously built a new one per
+  message, each with its own concurrency gate, so chunking would have allowed two in-flight
+  messages to run sixteen requests instead of eight.
+- The spend confirmation is a status line plus one button, not a modal. The same mechanism
+  serves Resume. Doing nothing is the cancel, which is the right default for something appearing
+  over a shopping page.
+- Cost is estimated at four characters per token, calibrated against real usage.input_tokens
+  from the API. It is only ever used to decide whether to ask; the figure reported after a run is
+  the real one the API returned.
+- The worker-eviction path is deliberately NOT in the e2e. Content scripts run in an isolated
+  world with their own `chrome` object, so patching sendMessage from the test page cannot reach
+  them; a test that appeared to cover it would be testing nothing. chunk() and sendWithRetry()
+  were extracted to src/content/resume.ts and unit-tested instead.

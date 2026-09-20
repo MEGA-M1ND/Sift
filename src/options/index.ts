@@ -32,6 +32,7 @@ async function main(): Promise<void> {
   const reveal = el<HTMLInputElement>("reveal");
   const cap = el<HTMLInputElement>("cap");
   const threshold = el<HTMLInputElement>("threshold");
+  const confirmAbove = el<HTMLInputElement>("confirm");
   const thresholdValue = el("thresholdValue");
   const siteIn = el<HTMLInputElement>("site-in");
   const siteCom = el<HTMLInputElement>("site-com");
@@ -45,6 +46,7 @@ async function main(): Promise<void> {
   key.value = settings.apiKey;
   cap.value = String(settings.reviewCap);
   threshold.value = String(settings.defaultThreshold);
+  confirmAbove.value = String(settings.confirmAboveUsd);
   thresholdValue.textContent = settings.defaultThreshold.toFixed(2);
   siteIn.checked = settings.enabledSites["amazon.in"];
   siteCom.checked = settings.enabledSites["amazon.com"];
@@ -80,11 +82,18 @@ async function main(): Promise<void> {
       return;
     }
 
+    const confirmValue = Number.parseFloat(confirmAbove.value);
+    if (!Number.isFinite(confirmValue) || confirmValue < 0) {
+      flash(status, "Spend confirmation must be zero or more.", true);
+      return;
+    }
+
     const next: Settings = {
       apiKey: key.value.trim(),
       reviewCap: capValue,
       defaultThreshold: Number(threshold.value),
       enabledSites: { "amazon.in": siteIn.checked, "amazon.com": siteCom.checked },
+      confirmAboveUsd: confirmValue,
     };
 
     void saveSettings(next).then(() => {

@@ -14,6 +14,11 @@ export interface Settings {
   defaultThreshold: number;
   /** Per-site enable toggle. */
   enabledSites: Record<Site, boolean>;
+  /**
+   * Ask before a page's estimated spend exceeds this, in USD. 0 always asks.
+   * A run is never started without the user's say-so above this figure.
+   */
+  confirmAboveUsd: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -21,6 +26,7 @@ export const DEFAULT_SETTINGS: Settings = {
   reviewCap: 300,
   defaultThreshold: 0.7,
   enabledSites: { "amazon.in": true, "amazon.com": true },
+  confirmAboveUsd: 0.01,
 };
 
 const KEY = "sift:settings";
@@ -45,6 +51,10 @@ export async function loadSettings(): Promise<Settings> {
           ? partial.defaultThreshold
           : DEFAULT_SETTINGS.defaultThreshold,
       enabledSites: { ...DEFAULT_SETTINGS.enabledSites, ...(partial.enabledSites ?? {}) },
+      confirmAboveUsd:
+        typeof partial.confirmAboveUsd === "number" && partial.confirmAboveUsd >= 0
+          ? partial.confirmAboveUsd
+          : DEFAULT_SETTINGS.confirmAboveUsd,
     };
   } catch {
     // Storage can be unavailable; the extension must still not break the page.

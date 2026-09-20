@@ -36,6 +36,7 @@ export interface SettingsResponse {
   reviewCap: number;
   defaultThreshold: number;
   enabledSites: Record<string, boolean>;
+  confirmAboveUsd: number;
 }
 
 export type Request = ScoreRequest | SettingsRequest;
