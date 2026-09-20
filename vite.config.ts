@@ -27,7 +27,19 @@ const manifest = defineManifest({
     },
   ],
   options_page: "src/options/index.html",
-  action: { default_title: "Sift" },
+  icons: {
+    16: "src/icons/icon16.png",
+    32: "src/icons/icon32.png",
+    48: "src/icons/icon48.png",
+    128: "src/icons/icon128.png",
+  },
+  action: {
+    default_title: "Sift",
+    default_icon: {
+      16: "src/icons/icon16.png",
+      32: "src/icons/icon32.png",
+    },
+  },
 });
 
 export default defineConfig({

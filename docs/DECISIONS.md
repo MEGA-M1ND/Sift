@@ -120,3 +120,20 @@ One line per non-obvious choice, with the reason.
   `/dp/`, which a match pattern cannot express. `detectPage()` is the real gate.
 - `scripts/e2e-panel.ts` serves the fixture at a genuine amazon.in URL so the manifest's match
   patterns and detectPage() are exercised for real, rather than bypassed with a localhost page.
+
+## Phase 5
+
+- The settings page reads and writes `chrome.storage.local` directly rather than going through
+  the service worker. It is an extension page, so it has the same access, and a round trip would
+  buy nothing.
+- The API key field is a password input with an explicit "Show key" toggle, so a shoulder-surfer
+  or a screen recording does not capture it by default. The e2e screenshot has it masked.
+- The settings page shows the live cache size and offers a clear button. Without it there is no
+  way to force a re-score after editing a preset's wording, which is the one thing that
+  legitimately invalidates cached answers.
+- The e2e now saves settings, reloads the page, and asserts the values came back. A settings page
+  that silently fails to persist looks identical to one that works.
+- Icons are generated from a single SVG by rasterising it with the Chromium already installed for
+  the e2e, rather than adding an image toolchain for four files.
+- README states plainly what has and has not been verified. A reader seeing "149 tests passing"
+  would otherwise reasonably assume the selectors work against live Amazon, which is not known.

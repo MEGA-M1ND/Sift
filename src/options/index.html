@@ -4,9 +4,109 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sift settings</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        max-width: 640px;
+        margin: 0 auto;
+        padding: 32px 20px 64px;
+        color: #0f1111;
+        background: #fff;
+      }
+      @media (prefers-color-scheme: dark) {
+        body { color: #e6e6e6; background: #17191a; }
+        input, select { background: #1f2223; color: inherit; border-color: #4a4f50; }
+        .card { border-color: #33383a; }
+        .muted { color: #9aa0a1; }
+      }
+      h1 { font-size: 20px; margin: 0 0 4px; }
+      .sub { color: #565959; margin: 0 0 24px; }
+      .card { border: 1px solid #d5d9d9; border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; }
+      .card h2 { font-size: 15px; margin: 0 0 4px; }
+      .muted { color: #565959; font-size: 13px; margin: 0 0 12px; }
+      label { display: block; margin: 12px 0 4px; font-weight: 600; }
+      input[type="password"], input[type="text"], input[type="number"] {
+        width: 100%; padding: 8px 10px; border: 1px solid #888c8c; border-radius: 6px;
+        font: inherit; box-sizing: border-box;
+      }
+      input[type="range"] { width: 220px; vertical-align: middle; }
+      .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      .toggle { display: flex; align-items: center; gap: 8px; font-weight: 400; margin: 8px 0; }
+      .toggle input { width: auto; }
+      button {
+        font: inherit; font-weight: 600; padding: 9px 16px; border-radius: 6px;
+        border: 1px solid #d5d9d9; background: #ffd814; cursor: pointer;
+      }
+      button.secondary { background: #f7fafa; font-weight: 400; }
+      button:hover { filter: brightness(0.97); }
+      .status { margin-left: 10px; color: #12683a; font-size: 13px; }
+      .status.warn { color: #b12704; }
+      code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+      a { color: #007185; }
+      .val { font-variant-numeric: tabular-nums; font-weight: 700; }
+    </style>
   </head>
   <body>
-    <main id="app"></main>
+    <h1>Sift</h1>
+    <p class="sub">Score Amazon reviews against a plain-English filter.</p>
+
+    <div class="card">
+      <h2>TypeSafe API key</h2>
+      <p class="muted">
+        Stored in this browser only, in <code>chrome.storage.local</code>. It is sent to
+        <code>api.typesafe.ai</code> and to no one else — not even to us, because there is no
+        "us": Sift has no backend. Get a key at
+        <a href="https://typesafe.ai" target="_blank" rel="noreferrer">typesafe.ai</a>.
+      </p>
+      <label for="key">API key</label>
+      <input id="key" type="password" autocomplete="off" spellcheck="false"
+             placeholder="apikey_..." />
+      <p class="muted" style="margin-top:8px">
+        <label class="toggle"><input id="reveal" type="checkbox"> Show key</label>
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Scoring</h2>
+      <p class="muted">How much of a page Sift looks at, and where the slider starts.</p>
+
+      <label for="cap">Maximum reviews per page</label>
+      <div class="row">
+        <input id="cap" type="number" min="10" max="2000" step="10" style="width:120px" />
+        <span class="muted" style="margin:0">
+          Each review is one request. 300 costs roughly $0.003 at $0.042 per million input tokens.
+        </span>
+      </div>
+
+      <label for="threshold">Default match threshold</label>
+      <div class="row">
+        <input id="threshold" type="range" min="0" max="1" step="0.01" />
+        <span class="val" id="thresholdValue">0.70</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Sites</h2>
+      <p class="muted">Sift only ever runs on these two, and only on product and review pages.</p>
+      <label class="toggle"><input id="site-in" type="checkbox"> amazon.in</label>
+      <label class="toggle"><input id="site-com" type="checkbox"> amazon.com</label>
+    </div>
+
+    <div class="card">
+      <h2>Cached answers</h2>
+      <p class="muted" id="cacheInfo">
+        Answers are cached so a repeat visit costs nothing. Up to 5,000 are kept.
+      </p>
+      <button class="secondary" id="clearCache" type="button">Clear cache</button>
+      <span class="status" id="cacheStatus"></span>
+    </div>
+
+    <div class="row">
+      <button id="save" type="button">Save settings</button>
+      <span class="status" id="status"></span>
+    </div>
+
     <script type="module" src="./index.ts"></script>
   </body>
 </html>

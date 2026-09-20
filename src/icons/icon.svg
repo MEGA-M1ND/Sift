@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- A funnel: the product is a sieve, and the shape reads at 16px. -->
+  <rect width="128" height="128" rx="28" fill="#12683a"/>
+  <path d="M28 36h72L74 70v26l-20 10V70L28 36z" fill="#fff"/>
+  <circle cx="95" cy="93" r="19" fill="#ffd814" stroke="#12683a" stroke-width="5"/>
+  <path d="M86 93l6 6 11-12" fill="none" stroke="#12683a" stroke-width="6"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

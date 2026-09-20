@@ -98,13 +98,40 @@ async function main(): Promise<void> {
     const id = await extensionId(context);
     console.log(`\nextension id: ${id}\n`);
 
-    // Enter the API key through the real settings page.
+    // Enter the API key and the other settings through the real settings page.
     const options = await context.newPage();
     await options.goto(`chrome-extension://${id}/src/options/index.html`);
     await options.fill("#key", "test-key-not-a-real-one");
+    await options.fill("#cap", "150");
+    await options.evaluate(() => {
+      const slider = document.querySelector<HTMLInputElement>("#threshold")!;
+      slider.value = "0.62";
+      slider.dispatchEvent(new Event("input"));
+    });
+    await options.uncheck("#site-com");
     await options.click("#save");
     await options.waitForFunction(() => document.querySelector("#status")?.textContent === "Saved.");
-    check("settings page stores the API key", true);
+    check("settings page saves the API key and options", true);
+
+    // Reload: settings must survive, or nothing the user sets here is real.
+    await options.reload();
+    await options.waitForSelector("#key");
+    const persisted = await options.evaluate(() => ({
+      key: document.querySelector<HTMLInputElement>("#key")!.value,
+      cap: document.querySelector<HTMLInputElement>("#cap")!.value,
+      threshold: document.querySelector<HTMLInputElement>("#threshold")!.value,
+      siteCom: document.querySelector<HTMLInputElement>("#site-com")!.checked,
+      siteIn: document.querySelector<HTMLInputElement>("#site-in")!.checked,
+    }));
+    console.log(`  persisted: ${JSON.stringify(persisted)}`);
+    check("settings survive a reload", persisted.key === "test-key-not-a-real-one" &&
+      persisted.cap === "150" && persisted.threshold === "0.62" && persisted.siteCom === false);
+
+    // Put amazon.com back on, and the key masked, before the screenshot.
+    await options.check("#site-com");
+    await options.click("#save");
+    await options.waitForFunction(() => document.querySelector("#status")?.textContent === "Saved.");
+    await options.screenshot({ path: "docs/settings.png", fullPage: true });
     await options.close();
 
     const page = await context.newPage();
