@@ -12,7 +12,8 @@
     "smoke": "node --env-file-if-exists=.env --import tsx scripts/smoke.ts",
     "check-fixture": "node --import tsx scripts/check-fixture.ts",
     "build": "vite build",
-    "e2e": "node --import tsx scripts/e2e-panel.ts"
+    "e2e": "node --import tsx scripts/e2e-panel.ts",
+    "demo": "node --env-file-if-exists=.env --import tsx demo/server.ts"
   },
   "dependencies": {
     "@typesafe-ai/sdk": "^0.6.0"

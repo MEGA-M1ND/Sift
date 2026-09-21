@@ -105,6 +105,37 @@ there would imply a precision the model never claimed. The band is
 Scores and choices do report confidence, so the usefulness rubric uses the real
 value.
 
+## Try it without installing anything
+
+The extension needs an Amazon tab and a loaded unpacked build, which is a lot to
+ask of someone who just wants to see what it does. `npm run demo` serves one page
+that drives the real pipeline over a set of sample reviews:
+
+```sh
+git clone https://github.com/MEGA-M1ND/Sift.git && cd Sift
+npm ci
+echo 'TYPESAFE_API_KEY=your-key-here' > .env   # .env is gitignored
+npm run demo                                    # http://localhost:5174
+```
+
+![The demo page](docs/demo.png)
+
+Type a filter, toggle preset chips, press Score. The page imports the extension's
+own modules rather than reimplementing them — same questions, same preset weights,
+same combination rules, same client with its retries and its eight-request cap,
+same cache — so what you see here is what the panel does. The key stays in the
+server process and is never sent to the page, which mirrors how the extension
+keeps it in the service worker.
+
+It also answers the question `npm run smoke` was written for. Open **Calibration**
+and you get every probability the run produced, in one table:
+
+![The calibration table](docs/demo-calibration.png)
+
+Read the spread, not the individual rows. Values bunched near 0 and 1 mean the 0.70
+threshold and the 0.40–0.60 unsure band are sensible. Values bunched in the middle
+mean both want moving, and both are one constant in `src/questions/combine.ts`.
+
 ## Install
 
 There is no Chrome Web Store listing yet. Load it unpacked:
@@ -234,6 +265,7 @@ npm test              # 231 unit tests, no network
 npm run typecheck
 npm run build         # produces dist/
 npm run e2e           # loads dist/ into Chromium and drives the panel
+npm run demo          # the demo page on localhost:5174 (needs a key)
 npm run smoke         # five reviews against the real API (needs a key)
 npm run check-fixture -- <file.html>
 ```

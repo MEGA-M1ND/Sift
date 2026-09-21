@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sift demo</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f6f7f7;
+        --surface: #ffffff;
+        --ink: #141a1a;
+        --muted: #5c6a6a;
+        --line: #d9dfdf;
+        --accent: #0d6b5e;
+        --accent-ink: #ffffff;
+        --top: #0f6b3f;
+        --high: #e6f4ea;
+        --high-ink: #10603a;
+        --mid: #fdf1e3;
+        --mid-ink: #87500a;
+        --low: #f2f5f5;
+        --low-ink: #6d7a7a;
+        --warn: #a3310f;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          --bg: #101414;
+          --surface: #171d1d;
+          --ink: #e8eded;
+          --muted: #9aa8a8;
+          --line: #2b3535;
+          --accent: #3fb39c;
+          --accent-ink: #06201b;
+          --top: #3fb37a;
+          --high: #16301f;
+          --high-ink: #7fd3a1;
+          --mid: #33260f;
+          --mid-ink: #e0b268;
+          --low: #1d2424;
+          --low-ink: #8d9a9a;
+          --warn: #f08a63;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding-block: 28px 64px;
+        padding-inline: 16px;
+        background: var(--bg);
+        color: var(--ink);
+        font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      .wrap { max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+      header h1 { margin: 0; font-size: 21px; letter-spacing: -0.01em; }
+      header p { margin: 4px 0 0; color: var(--muted); font-size: 13.5px; }
+      .product {
+        font-size: 13px; color: var(--muted);
+        border-left: 3px solid var(--accent); padding-left: 10px;
+      }
+      .panel {
+        background: var(--surface); border: 1px solid var(--line);
+        border-radius: 12px; padding: 16px;
+        display: flex; flex-direction: column; gap: 14px;
+      }
+      .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      input[type="text"] {
+        flex: 1 1 240px; min-width: 0; padding: 9px 12px; font: inherit;
+        border: 1px solid var(--line); border-radius: 8px;
+        background: var(--bg); color: var(--ink);
+      }
+      input[type="text"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+      button {
+        font: inherit; font-weight: 600; padding: 9px 14px; cursor: pointer;
+        border: 1px solid var(--line); border-radius: 8px;
+        background: var(--bg); color: var(--ink);
+      }
+      button:hover:not(:disabled) { border-color: var(--accent); }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+      button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+      .chip {
+        font-size: 12.5px; padding: 5px 11px; border-radius: 999px;
+        border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer;
+      }
+      .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+      .chip.filter { background: color-mix(in srgb, var(--accent) 12%, transparent); border-color: var(--accent); cursor: default; }
+      .chip .x { margin-left: 6px; font-weight: 700; cursor: pointer; }
+      .controls { font-size: 13px; color: var(--muted); gap: 16px; }
+      .controls label { display: inline-flex; align-items: center; gap: 7px; }
+      input[type="range"] { width: 150px; accent-color: var(--accent); }
+      .val { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--ink); }
+      .status { font-size: 13px; color: var(--muted); min-height: 20px; }
+      .status.warn { color: var(--warn); }
+      .status b { color: var(--ink); font-variant-numeric: tabular-nums; }
+      ol.reviews { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+      li.review {
+        background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+        padding: 14px 16px; transition: opacity 0.18s ease;
+      }
+      li.review[data-dim="1"] { opacity: 0.38; }
+      .head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+      .stars { color: var(--mid-ink); font-size: 13px; letter-spacing: 1px; }
+      .title { font-weight: 650; }
+      .meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+      .body { margin: 8px 0 0; font-size: 14px; }
+      .badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+      .badge {
+        font-size: 11.5px; font-weight: 700; padding: 2px 9px; border-radius: 999px;
+        border: 1px solid var(--line); background: var(--low); color: var(--low-ink);
+        font-variant-numeric: tabular-nums;
+      }
+      .badge[data-step="top"] { background: var(--top); border-color: var(--top); color: #fff; }
+      .badge[data-step="high"] { background: var(--high); border-color: var(--high); color: var(--high-ink); }
+      .badge[data-step="medium"] { background: var(--mid); border-color: var(--mid); color: var(--mid-ink); }
+      .badge[data-step="unsure"] { font-style: italic; }
+      details.calib summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+      table { border-collapse: collapse; width: 100%; font-size: 12.5px; margin-top: 10px; }
+      th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+      th:first-child, td:first-child { text-align: left; font-variant-numeric: normal; }
+      th { color: var(--muted); font-weight: 600; }
+      .tablewrap { overflow-x: auto; }
+      .hint { font-size: 12.5px; color: var(--muted); }
+      code { background: color-mix(in srgb, var(--muted) 15%, transparent); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>Sift demo</h1>
+        <p>
+          The extension's real pipeline, driven from a page instead of an Amazon tab. Same questions,
+          same preset weights, same scoring client.
+        </p>
+      </header>
+
+      <div class="product" id="product"></div>
+
+      <div class="panel">
+        <div class="row">
+          <input id="filter" type="text" placeholder="e.g. battery dies within a year" aria-label="Add a filter" />
+          <button id="add" type="button">Add filter</button>
+          <button id="score" class="primary" type="button">Score</button>
+        </div>
+        <div class="chips" id="active" aria-label="Active filters"></div>
+        <div class="chips" id="presets" aria-label="Preset filters"></div>
+        <div class="row controls">
+          <label>Match at least
+            <input id="threshold" type="range" min="0" max="1" step="0.05" value="0.7" aria-label="Match threshold" />
+            <span class="val" id="thresholdValue">0.70</span>
+          </label>
+          <label><input id="hide" type="checkbox" /> Dim below threshold</label>
+        </div>
+        <div class="status" id="status">Add a filter, or pick a preset chip, then press Score.</div>
+      </div>
+
+      <details class="calib" id="calibWrap" hidden>
+        <summary>Calibration — every probability this run produced</summary>
+        <p class="hint">
+          What to look for is the spread, not individual rows. Values bunched near 0 and 1 mean the
+          0.70 threshold and the 0.40–0.60 unsure band are sensible. Values bunched in the middle
+          mean both want moving.
+        </p>
+        <div class="tablewrap"><table id="calib"></table></div>
+      </details>
+
+      <ol class="reviews" id="reviews"></ol>
+    </div>
+
+    <script type="module">
+      const $ = (id) => document.getElementById(id);
+      const state = { filters: [], presets: [], scored: null, threshold: 0.7, hide: false };
+
+      const stars = (n) => (n === null ? "" : "★".repeat(n) + "☆".repeat(5 - n));
+      const pct = (p) => `${Math.round(p * 100)}%`;
+
+      function setStatus(text, warn = false) {
+        $("status").innerHTML = text;
+        $("status").classList.toggle("warn", warn);
+      }
+
+      function renderFilters() {
+        $("active").innerHTML = "";
+        for (const [i, text] of state.filters.entries()) {
+          const chip = document.createElement("span");
+          chip.className = "chip filter";
+          chip.append(document.createTextNode(text));
+          const x = document.createElement("span");
+          x.className = "x";
+          x.textContent = "×";
+          x.setAttribute("role", "button");
+          x.setAttribute("aria-label", `Remove ${text}`);
+          x.onclick = () => {
+            state.filters.splice(i, 1);
+            renderFilters();
+          };
+          chip.append(x);
+          $("active").append(chip);
+        }
+      }
+
+      function renderPresets(presets) {
+        $("presets").innerHTML = "";
+        for (const preset of presets) {
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = "chip";
+          chip.textContent = preset.label;
+          chip.setAttribute("aria-pressed", String(state.presets.includes(preset.id)));
+          if (preset.flagOnly) chip.title = "Flags reviews; takes no part in ranking or dimming";
+          chip.onclick = () => {
+            state.presets = state.presets.includes(preset.id)
+              ? state.presets.filter((id) => id !== preset.id)
+              : [...state.presets, preset.id];
+            renderPresets(presets);
+          };
+          $("presets").append(chip);
+        }
+      }
+
+      function renderReviews(reviews) {
+        const list = $("reviews");
+        list.innerHTML = "";
+        for (const review of reviews) {
+          const li = document.createElement("li");
+          li.className = "review";
+          const passes = review.passesAt?.[state.threshold.toFixed(2)] ?? true;
+          li.dataset.dim = state.hide && passes === false ? "1" : "0";
+
+          const head = document.createElement("div");
+          head.className = "head";
+          head.innerHTML =
+            `<span class="stars">${stars(review.rating)}</span>` +
+            `<span class="title"></span>`;
+          head.querySelector(".title").textContent = review.title;
+          li.append(head);
+
+          const meta = document.createElement("div");
+          meta.className = "meta";
+          meta.textContent =
+            `${review.date ?? "undated"} · ` +
+            `${review.verified_purchase ? "verified purchase" : "unverified"} · ` +
+            `${review.helpful_votes} found helpful` +
+            (review.usefulness ? ` · usefulness ${review.usefulness.level.toFixed(2)}/2` : "");
+          li.append(meta);
+
+          const body = document.createElement("p");
+          body.className = "body";
+          body.textContent = review.body;
+          li.append(body);
+
+          if (review.badges?.length) {
+            const badges = document.createElement("div");
+            badges.className = "badges";
+            for (const badge of review.badges) {
+              if (badge.step === null) continue;
+              const el = document.createElement("span");
+              el.className = "badge";
+              el.dataset.step = badge.step;
+              const value = badge.kind === "unsure" ? "unsure" : pct(badge.probability);
+              el.textContent = `${badge.key.startsWith("preset:fake") ? "⚠ " : ""}${badge.label} ${value}`;
+              badges.append(el);
+            }
+            li.append(badges);
+          }
+          list.append(li);
+        }
+      }
+
+      function renderCalibration(reviews) {
+        const keys = [...new Set(reviews.flatMap((r) => r.badges.map((b) => b.label)))];
+        if (keys.length === 0) return;
+        const table = $("calib");
+        table.innerHTML =
+          "<thead><tr><th>review</th>" +
+          keys.map((k) => `<th>${k}</th>`).join("") +
+          "<th>useful</th><th>conf</th></tr></thead>";
+        const tbody = document.createElement("tbody");
+        for (const review of reviews) {
+          const tr = document.createElement("tr");
+          const cells = [`<td>${review.title.slice(0, 34)}</td>`];
+          for (const key of keys) {
+            const badge = review.badges.find((b) => b.label === key);
+            cells.push(`<td>${badge && badge.probability !== null ? badge.probability.toFixed(2) : "—"}</td>`);
+          }
+          cells.push(`<td>${review.usefulness ? review.usefulness.level.toFixed(2) : "—"}</td>`);
+          cells.push(`<td>${review.usefulness ? review.usefulness.confidence.toFixed(2) : "—"}</td>`);
+          tr.innerHTML = cells.join("");
+          tbody.append(tr);
+        }
+        table.append(tbody);
+        $("calibWrap").hidden = false;
+      }
+
+      async function score() {
+        if (state.filters.length === 0 && state.presets.length === 0) {
+          setStatus("Add a filter, or pick a preset chip, then press Score.");
+          return;
+        }
+        $("score").disabled = true;
+        setStatus("Scoring…");
+        try {
+          const response = await fetch("/api/score", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ filters: state.filters, presets: state.presets }),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error ?? `HTTP ${response.status}`);
+
+          state.scored = data;
+          renderReviews(data.reviews);
+          renderCalibration(data.reviews);
+
+          const s = data.summary;
+          const failed = Object.values(s.failures ?? {}).reduce((t, n) => t + (n ?? 0), 0);
+          setStatus(
+            `<b>${s.scored}/${s.reviews}</b> scored · <b>${s.requests}</b> requests · ` +
+              `<b>${s.inputTokens}</b> input tokens · <b>$${s.estimatedCostUsd.toFixed(4)}</b> · ` +
+              `p50 <b>${s.p50LatencyMs}ms</b> p95 <b>${s.p95LatencyMs}ms</b> · ` +
+              `<b>${s.wallMs}ms</b> wall` +
+              (s.fullyCached > 0 ? ` · <b>${s.fullyCached}</b> free from cache` : "") +
+              (failed > 0 ? ` · <b>${failed}</b> unscored` : ""),
+            failed > 0,
+          );
+        } catch (error) {
+          setStatus(String(error.message ?? error), true);
+        } finally {
+          $("score").disabled = false;
+        }
+      }
+
+      function addFilter() {
+        const text = $("filter").value.trim();
+        if (!text) return;
+        if (state.filters.length >= window.__maxFilters) {
+          setStatus(`At most ${window.__maxFilters} filters at once. Remove one first.`, true);
+          return;
+        }
+        state.filters.push(text);
+        $("filter").value = "";
+        renderFilters();
+      }
+
+      $("add").onclick = addFilter;
+      $("filter").onkeydown = (e) => {
+        if (e.key === "Enter") { e.preventDefault(); addFilter(); }
+      };
+      $("score").onclick = score;
+      $("threshold").oninput = (e) => {
+        state.threshold = Number(e.target.value);
+        $("thresholdValue").textContent = state.threshold.toFixed(2);
+        if (state.scored) renderReviews(state.scored.reviews);
+      };
+      $("hide").onchange = (e) => {
+        state.hide = e.target.checked;
+        if (state.scored) renderReviews(state.scored.reviews);
+      };
+
+      const config = await (await fetch("/api/config")).json();
+      window.__maxFilters = config.maxFilters;
+      $("product").textContent = `${config.product.title} · ${config.product.category}`;
+      renderPresets(config.presets);
+      renderReviews(config.reviews);
+      if (!config.hasApiKey) {
+        setStatus("No TYPESAFE_API_KEY on the server. Put it in .env and restart.", true);
+      }
+    </script>
+  </body>
+</html>

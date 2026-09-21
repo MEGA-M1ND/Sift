@@ -1,0 +1,116 @@
+{
+  "product": {
+    "title": "AcmeDrive 20V Cordless Drill with 2 Li-ion Batteries",
+    "category": "Drills & Drivers"
+  },
+  "reviews": [
+    {
+      "id": "D01",
+      "title": "Battery was dead within ten months",
+      "body": "Used it for weekend jobs, nothing heavy. Around month ten the battery went from a full day of work to about forty minutes. The second battery went the same way a month later. The drill itself is fine, the cells are not.",
+      "rating": 2,
+      "verified_purchase": true,
+      "date": "2026-03-04",
+      "helpful_votes": 17
+    },
+    {
+      "id": "D02",
+      "title": "Great product!!",
+      "body": "Love it. Exactly what I wanted. Five stars.",
+      "rating": 5,
+      "verified_purchase": true,
+      "date": "2026-05-19",
+      "helpful_votes": 0
+    },
+    {
+      "id": "D03",
+      "title": "Excellent value for the price",
+      "body": "I received this item at a discounted price in exchange for my honest and unbiased review. That said, the build quality is impressive and the finish is lovely. Would recommend to anyone!",
+      "rating": 5,
+      "verified_purchase": false,
+      "date": "2026-06-02",
+      "helpful_votes": 1204
+    },
+    {
+      "id": "D04",
+      "title": "Box arrived crushed",
+      "body": "Courier left it in the rain and the outer box was soaked through and torn open. Amazon replaced it quickly, no complaints there. Haven't actually used the drill yet so I can't speak to it.",
+      "rating": 1,
+      "verified_purchase": true,
+      "date": "2026-04-11",
+      "helpful_votes": 4
+    },
+    {
+      "id": "D05",
+      "title": "Eighteen months of daily site use",
+      "body": "I run a small carpentry business and this has been my main driver since early last year. Roughly forty holes a day into pine and MDF, occasional masonry with the hammer setting. Both batteries still take a full charge and I get through a morning on one. The chuck has loosened slightly and I torque it by hand now.",
+      "rating": 5,
+      "verified_purchase": true,
+      "date": "2026-08-22",
+      "helpful_votes": 63
+    },
+    {
+      "id": "D06",
+      "title": "Chuck snapped after four months",
+      "body": "The plastic collar around the chuck cracked right through while I was changing a bit. Not dropped, not abused, just normal use twice a week. Now it won't grip anything above 6mm without slipping.",
+      "rating": 1,
+      "verified_purchase": true,
+      "date": "2026-07-14",
+      "helpful_votes": 38
+    },
+    {
+      "id": "D07",
+      "title": "Five stars",
+      "body": "Honestly it stopped charging after three weeks and support have not replied to two emails. Still, the box was nice and it looked good when it worked.",
+      "rating": 5,
+      "verified_purchase": true,
+      "date": "2026-02-27",
+      "helpful_votes": 9
+    },
+    {
+      "id": "D08",
+      "title": "Case is too small for the second battery",
+      "body": "The moulded case only has a slot for one battery. The spare rattles around loose with the charger. Minor, but for the price I expected the case to actually fit what comes in the box.",
+      "rating": 3,
+      "verified_purchase": true,
+      "date": "2026-05-06",
+      "helpful_votes": 22
+    },
+    {
+      "id": "D09",
+      "title": "Battery life still strong after two years",
+      "body": "Bought this in 2024 and it has been through two kitchen fit-outs and a deck. Charge holds as well as the day I got it. Only thing I would change is the LED, which points slightly off from where the bit actually is.",
+      "rating": 5,
+      "verified_purchase": true,
+      "date": "2026-01-18",
+      "helpful_votes": 51
+    },
+    {
+      "id": "D10",
+      "title": "Received free for testing",
+      "body": "Amazing drill! Great power, great battery, great price. Very happy with this purchase and would buy again. Highly recommend to all my friends and family!",
+      "rating": 5,
+      "verified_purchase": false,
+      "date": "2026-06-30",
+      "helpful_votes": 2
+    },
+    {
+      "id": "D11",
+      "title": "Delivered three days late",
+      "body": "Ordered with next-day delivery and it turned up on the fourth day with no notification. The seller was unhelpful when I chased it. Product seems fine from the outside, box unopened so far.",
+      "rating": 2,
+      "verified_purchase": true,
+      "date": "2026-04-29",
+      "helpful_votes": 7
+    },
+    {
+      "id": "D12",
+      "title": "Good drill, battery fades in cold",
+      "body": "No complaints in the workshop. Out on site below about five degrees the runtime roughly halves and one battery cut out entirely at full charge. Warmed it in the van and it came back. Worth knowing if you work outdoors in winter.",
+      "rating": 4,
+      "verified_purchase": true,
+      "date": "2026-02-09",
+      "helpful_votes": 44
+    }
+  ]
+}

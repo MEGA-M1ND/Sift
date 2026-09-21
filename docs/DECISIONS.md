@@ -211,3 +211,20 @@ One line per non-obvious choice, with the reason.
 - Negative tests matter more than positive ones here: wrong data is silently scored, billed and
   believed, while missing data is visible. Product descriptions, sponsored carousels, Q&A blocks
   and the product title are all asserted NOT to become reviews.
+
+## The demo page
+
+- `npm run demo` exists because the extension cannot be shown to anyone unwilling to load an
+  unpacked build into Chrome first, and because api.typesafe.ai is unreachable from the
+  environment this was built in, so nothing here could ever demonstrate real scoring.
+- The demo server imports src/ directly — scorePage, SiftClient, buildQuestions, combine,
+  the cache — rather than reimplementing any of it. A demo that drifts from the product is
+  worse than no demo, because it shows something that is not true.
+- Verdicts, ordering and badge steps are computed server-side by the extension's own combine.ts
+  and sent to the page as data. The page renders; it decides nothing.
+- `passesThreshold` is a function, so it cannot cross JSON. The server precomputes the answer for
+  each of the 21 slider positions, keyed by the exact string the slider produces.
+- The key stays in the server process and is never sent to the page, mirroring the split between
+  the extension's service worker and its content script.
+- An Artifact was considered and rejected: the Artifact CSP blocks fetch/XHR to every host, so a
+  published page cannot reach api.typesafe.ai whatever key it is given.
